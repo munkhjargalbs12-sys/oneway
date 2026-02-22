@@ -1,0 +1,146 @@
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-native";
+
+export default function HomeScreen() {
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      
+      {/* 🪙 COINS */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🪙 Таны зоос</Text>
+        <Text style={styles.bigNumber}>20,000</Text>
+        <Text style={styles.subText}>Өнөөдөр +500</Text>
+      </View>
+
+      {/* 🚗 DRIVER STATUS */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🚗 Идэвхтэй чиглэл</Text>
+        <Text style={styles.routeText}>УБ → Зайсан</Text>
+        <Text style={styles.subText}>⏰ Маргааш 08:30 · 💺 2 суудал үлдсэн</Text>
+        <TouchableOpacity style={styles.actionBtn}>
+          <Text style={styles.actionText}>Удирдах</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 🎟 PASSENGER STATUS */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🎟 Таны аялал</Text>
+        <Text style={styles.routeText}>Зайсан → 13-р хороолол</Text>
+        <Text style={styles.subText}>⏰ Өнөөдөр 18:10 · 👤 Жолооч: Бат</Text>
+        <TouchableOpacity style={styles.actionBtn}>
+          <Text style={styles.actionText}>Дэлгэрэнгүй</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ⭐ RATING */}
+      <View style={styles.cardRow}>
+        <View style={styles.smallCard}>
+          <Text style={styles.cardTitle}>⭐ Үнэлгээ</Text>
+          <Text style={styles.bigNumber}>4.8</Text>
+        </View>
+        <View style={styles.smallCard}>
+          <Text style={styles.cardTitle}>🚗 Аялсан</Text>
+          <Text style={styles.bigNumber}>26</Text>
+        </View>
+      </View>
+
+      {/* 🔥 SUGGESTED RIDES */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>🔥 Танд ойр унаа</Text>
+        <Text style={styles.routeText}>УБ → Хороолол</Text>
+        <Text style={styles.subText}>⏰ 20 мин дараа · 💰 2,000₮</Text>
+      </View>
+
+      {/* 📊 STATS */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>📊 Таны статистик</Text>
+        <Text style={styles.subText}>🚗 Чиглэл үүсгэсэн: 12</Text>
+        <Text style={styles.subText}>🧍 Хамт явсан хүн: 38</Text>
+        <Text style={styles.subText}>🌱 Хэмнэсэн CO₂: 52кг</Text>
+      </View>
+
+      {/* 🎁 BONUS */}
+      <View style={[styles.card, styles.bonusCard]}>
+        <Text style={styles.cardTitle}>🎁 Өнөөдрийн бонус</Text>
+        <Text style={styles.subText}>1 чиглэл үүсгэвэл +300 зоос</Text>
+      </View>
+
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F6F8F7",
+    padding: 16,
+  },
+
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+
+  cardRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+
+  smallCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    padding: 18,
+    borderRadius: 20,
+    marginHorizontal: 4,
+    alignItems: "center",
+    elevation: 3,
+  },
+
+  cardTitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 6,
+  },
+
+  bigNumber: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#111827",
+  },
+
+  subText: {
+    fontSize: 14,
+    color: "#4B7F73",
+    marginTop: 4,
+  },
+
+  routeText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827",
+    marginTop: 4,
+  },
+
+  actionBtn: {
+    marginTop: 10,
+    backgroundColor: "#4CAF8C",
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+
+  actionText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+
+  bonusCard: {
+    backgroundColor: "#E6F7F0",
+  },
+});
