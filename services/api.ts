@@ -1,18 +1,18 @@
-const API_URL = "http://192.168.1.78:3000";
+import { API_URL } from "./config";
 
 type RegisterPayload = {
   phone: string;
   password: string;
   name: string;
   role: "passenger" | "driver";
-  avatar: string;
+  avatar_id: string;
 };
 export type User = {
   id: number;
   name: string;
   phone: string;
   role: "passenger" | "driver";
-  avatar: string;
+  avatar_id: string;
 };
 export type AuthResponse = {
   token?: string;
@@ -54,6 +54,25 @@ export async function login(phone: string, password: string): Promise<AuthRespon
 
     return handleResponse(res);
   } catch {
+    return { message: "Сервертэй холбогдож чадсангүй" };
+  }
+}
+
+export async function updateAvatar(avatar_id: string, token: string) {
+  try {
+    const res = await fetch(`${API_URL}/users/avatar`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ avatar_id }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { message: data.message || "Failed to update avatar" };
+    return data;
+  } catch (err) {
     return { message: "Сервертэй холбогдож чадсангүй" };
   }
 }

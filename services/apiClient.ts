@@ -1,6 +1,5 @@
 import { getToken } from "./authStorage";
-
-const API_URL = "http://192.168.1.78:3000";
+import { API_URL } from "./config";
 
 export async function apiFetch(
   path: string,

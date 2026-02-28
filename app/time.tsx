@@ -21,7 +21,7 @@ export default function Time() {
           key={t.value}
           onPress={() =>
             router.push(
-              `/role?location=${location}&radius=${radius}&time=${t.value}`
+              `/location?location=${location}&radius=${radius}&time=${t.value}`
             )
           }
           style={{

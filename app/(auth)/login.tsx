@@ -1,7 +1,7 @@
 import * as NavigationBar from "expo-navigation-bar";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+// Safe area provided by root layout
 import AuthModal from "../../components/AuthModal";
 import { saveToken, saveUser, setGuestMode } from "../../services/authStorage";
 
@@ -19,7 +19,6 @@ import {
 const { height } = Dimensions.get("window");
 
 export default function LoginScreen() {
-  const insets = useSafeAreaInsets();
   const [openAuth, setOpenAuth] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -45,7 +44,7 @@ export default function LoginScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <StatusBar backgroundColor="#4e4e4e" barStyle="dark-content" />
 
       <View style={styles.container}>
@@ -88,7 +87,7 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.footer, { paddingBottom: insets.bottom }]}>
+        <View style={styles.footer}>
           <Image
             source={require("../../assets/images/city1.png")}
             style={styles.bottomImage}
@@ -108,7 +107,7 @@ export default function LoginScreen() {
           router.replace("/(tabs)/home");
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 

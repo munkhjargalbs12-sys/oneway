@@ -1,6 +1,6 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Image,
@@ -65,6 +65,13 @@ export default function RideCreationScreen() {
 
   // 📅 Weekdays
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([]);
+  const [vehicleId, setVehicleId] = useState<number | null>(null);
+
+  const pickVehicleId = (v: any): number | null => {
+    const payload = Array.isArray(v) ? v[0] : v?.vehicle ?? v?.data ?? v;
+    const id = Number(payload?.id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  };
 
   // 🔁 Backend-д явуулах weekday map
   const WEEKDAY_MAP = ["Mon", "Tue", "Wed", "Thu", "Fri"];
@@ -85,6 +92,9 @@ export default function RideCreationScreen() {
 const createRideOnBackend = async () => {
   try {
     console.log("🟡 createRideOnBackend CALLED");
+    if (!vehicleId) {
+      throw new Error("No vehicle selected. Please register a vehicle first.");
+    }
     const days = selectedWeekdays.map((i) => WEEKDAY_MAP[i]);
     console.log("🗓 POST days:", days);
 
@@ -108,6 +118,7 @@ const createRideOnBackend = async () => {
     polyline: routeData.polyline,
     price: totalPrice,
     seats,
+    vehicle_id: vehicleId,
     days,
       }),
     });
@@ -128,6 +139,12 @@ const createRideOnBackend = async () => {
        }
     console.log("🟢 CONFIRM RIDE CLICKED")
     try {
+      if (!vehicleId) {
+        Alert.alert("Алдаа", "Машин бүртгэгдээгүй байна. Машин бүртгэнэ үү.");
+        router.push("/vehicle/add");
+        return;
+      }
+
       await createRideOnBackend();
 
       router.replace({
@@ -138,6 +155,25 @@ const createRideOnBackend = async () => {
       Alert.alert("Алдаа", "Чиглэл үүсгэхэд алдаа гарлаа");
     }
   };
+
+  const initVehicle = useCallback(async () => {
+    try {
+      const v = await apiFetch("/vehicles/me");
+      setVehicleId(pickVehicleId(v));
+    } catch (err) {
+      console.log("Failed to load vehicle", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    initVehicle();
+  }, [initVehicle]);
+
+  useFocusEffect(
+    useCallback(() => {
+      initVehicle();
+    }, [initVehicle])
+  );
 
   return (
     <ScrollView

@@ -1,16 +1,16 @@
 import { useState } from "react";
 import {
-  View,
+  Alert,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ScrollView,
+  View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+// Safe area handled by root layout
 import { apiFetch } from "@/services/apiClient";
+import { router } from "expo-router";
 
 export default function AddVehicleScreen() {
   const [brand, setBrand] = useState("");
@@ -50,7 +50,7 @@ export default function AddVehicleScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>🚘 Машин бүртгэх</Text>
 
@@ -100,7 +100,7 @@ export default function AddVehicleScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

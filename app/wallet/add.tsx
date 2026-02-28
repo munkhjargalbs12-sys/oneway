@@ -1,14 +1,13 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  SafeAreaView,
-} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 export default function AddCredit() {
   const router = useRouter();
@@ -21,7 +20,7 @@ export default function AddCredit() {
     selectedAmount !== null ? selectedAmount : Number(customAmount);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <Text style={styles.header}>Зоос цэнэглэх</Text>
 
       {/* Preset Buttons */}
@@ -88,7 +87,7 @@ export default function AddCredit() {
           <Text style={styles.buttonText}>Үргэлжлүүлэх</Text>
         </LinearGradient>
       </TouchableOpacity>
-    </SafeAreaView>
+    </View>
   );
 }
 

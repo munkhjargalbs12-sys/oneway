@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { FlatList, View, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import Slide1 from "./slide1";
 import Slide2 from "./slide2";
@@ -20,7 +19,7 @@ export default function OnboardingSlider() {
   const [index, setIndex] = useState(0);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#4d4d4d79" }}>
+    <View style={{ flex: 1, backgroundColor: "#ffffff" }}>
       <FlatList
         ref={flatRef}
         data={slides}
@@ -45,6 +44,6 @@ export default function OnboardingSlider() {
           setIndex(i);
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }

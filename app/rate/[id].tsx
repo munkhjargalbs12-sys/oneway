@@ -4,16 +4,26 @@ import { View, Text, TouchableOpacity, TextInput, StyleSheet, Alert } from "reac
 import { apiFetch } from "@/services/apiClient";
 
 export default function RateRide() {
-  const { rideId, toUserId } = useLocalSearchParams<{ rideId: string; toUserId: string }>();
+  const { id, rideId, toUserId } = useLocalSearchParams<{
+    id?: string;
+    rideId?: string;
+    toUserId: string;
+  }>();
+  const effectiveRideId = rideId ?? id;
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
 
   const submitRating = async () => {
+    if (!effectiveRideId || !toUserId) {
+      Alert.alert("Алдаа", "Ride эсвэл хэрэглэгчийн мэдээлэл дутуу байна");
+      return;
+    }
+
     try {
       await apiFetch("/ratings", {
         method: "POST",
         body: JSON.stringify({
-          ride_id: rideId,
+          ride_id: effectiveRideId,
           to_user_id: toUserId,
           rating,
           comment,

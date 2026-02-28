@@ -2,13 +2,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
-  FlatList,
-  Image,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 const mockTransactions = [
@@ -24,7 +23,7 @@ export default function Wallet() {
   const locked = 8000;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.headerRow}>
         <Text style={styles.header}>Wallet</Text>
@@ -98,7 +97,7 @@ export default function Wallet() {
           </View>
         )}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 

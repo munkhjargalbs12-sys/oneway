@@ -1,7 +1,6 @@
 import AvatarPicker from "@/components/AvatarPicker";
-import { updateAvatar } from "@/services/api";
 import { apiFetch } from "@/services/apiClient";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clearAuth } from "@/services/authStorage";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -12,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+// Safe area handled by root layout
 
 const avatarMap: Record<string, any> = {
   child: require("../../../assets/profile/avatars/child.png"),
@@ -59,23 +58,23 @@ export default function ProfileScreen() {
     setAvatarId(id);
     setShowPicker(false);
 
-    const token = await AsyncStorage.getItem("token");
-    if (!token) return;
-
     try {
-      await updateAvatar(id, token);
+      await apiFetch("/users/avatar", {
+        method: "PATCH",
+        body: JSON.stringify({ avatar_id: id }),
+      });
     } catch (err) {
       console.error("Avatar update failed", err);
     }
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem("token");
+    await clearAuth();
     router.replace("/(auth)/login");
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* HEADER */}
         <View style={styles.header}>
@@ -129,8 +128,15 @@ export default function ProfileScreen() {
         {/* MY RIDES */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My rides</Text>
-          <TouchableOpacity onPress={() => router.push("/profile/history")}>
-            <Text style={styles.link}>🚗 Миний унааны түүх</Text>
+          <TouchableOpacity
+            style={styles.historyLinkRow}
+            onPress={() => router.push("/history")}
+          >
+            <Image
+              source={require("../../../assets/icons/ways.png")}
+              style={styles.historyLinkIcon}
+            />
+            <Text style={styles.link}>Миний унааны түүх</Text>
           </TouchableOpacity>
         </View>
 
@@ -141,7 +147,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -207,6 +213,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  historyLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  historyLinkIcon: {
+    width: 14,
+    height: 14,
+    marginRight: 8,
+    tintColor: "#2563eb",
+  },
   link: { color: "#2563eb", fontWeight: "600" },
 
   logout: { marginTop: 16 },

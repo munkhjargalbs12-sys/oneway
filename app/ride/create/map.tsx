@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
+import { API_URL } from "@/services/config";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 import MapView, {
   Marker,
@@ -7,23 +8,38 @@ import MapView, {
   PROVIDER_GOOGLE,
 } from "react-native-maps";
 
-
 type Point = { latitude: number; longitude: number };
 
 // 🔥 BACKEND API
-const API_URL = "http://192.168.1.78:3000";
-
-
-
 
 export default function CreateWayRoute() {
-  const { lat, lng } = useLocalSearchParams();
+  const params = useLocalSearchParams<{
+    lat?: string;
+    lng?: string;
+    startLat?: string;
+    startLng?: string;
+  }>();
+
+  const startLat = params.lat ?? params.startLat;
+  const startLng = params.lng ?? params.startLng;
+
   const mapRef = useRef<MapView | null>(null);
 
+  if (!startLat || !startLng) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>Эхлэх байршил олдсонгүй</Text>
+      </View>
+    );
+  }
+
   const start: Point = {
-    latitude: Number(lat),
-    longitude: Number(lng),
+    latitude: Number(startLat),
+    longitude: Number(startLng),
   };
+
+  console.log("START:", start);
+  console.log("API URL:", API_URL);
 
   const [end, setEnd] = useState<Point | null>(null);
   const [routeCoords, setRouteCoords] = useState<Point[]>([]);
@@ -69,47 +85,55 @@ export default function CreateWayRoute() {
   }
 
   // 🚗 Backend-ээс маршрут авах
-async function fetchRoute(dest: Point) {
-  try {
-    setLoading(true);
+  async function fetchRoute(dest: Point) {
+    try {
+      setLoading(true);
 
-    const res = await fetch(`${API_URL}/route`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true", // ⭐ ЭНЭ МӨР
-      },
-      body: JSON.stringify({
-        start: { lat: start.latitude, lng: start.longitude },
-        end: { lat: dest.latitude, lng: dest.longitude },
-      }),
-    });
+      console.log("FETCH ROUTE CALLED");
+      console.log("START:", start);
+      console.log("DEST:", dest);
+      console.log("API:", API_URL);
 
-    const data = await res.json();
+      const res = await fetch(`${API_URL}/route`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          start: { lat: start.latitude, lng: start.longitude },
+          end: { lat: dest.latitude, lng: dest.longitude },
+        }),
+      });
 
-    if (!data.polyline) {
-      Alert.alert("Алдаа", "Маршрут олдсонгүй");
-      return;
+      console.log("STATUS:", res.status);
+
+      const text = await res.text();
+      console.log("RAW RESPONSE:", text);
+
+      const data = JSON.parse(text);
+
+      if (!data.polyline) {
+        Alert.alert("Алдаа", "Маршрут олдсонгүй");
+        return;
+      }
+
+      const coords = decodePolyline(data.polyline);
+      setRouteCoords(coords);
+
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
+        animated: true,
+      });
+    } catch (err) {
+      console.log("NETWORK ERROR:", err);
+      Alert.alert("Алдаа", "Backend холбогдсонгүй");
+    } finally {
+      setLoading(false);
     }
-
-    const coords = decodePolyline(data.polyline);
-    setRouteCoords(coords);
-
-    mapRef.current?.fitToCoordinates(coords, {
-      edgePadding: { top: 80, right: 40, bottom: 260, left: 40 },
-      animated: true,
-    });
-  } catch (err) {
-    Alert.alert("Алдаа", "Backend холбогдсонгүй");
-  } finally {
-    setLoading(false);
   }
-}
-
 
   return (
     <View style={{ flex: 1 }}>
-      {/* 🗺 Map */}
       <MapView
         ref={mapRef}
         style={{ flex: 1 }}
@@ -138,41 +162,6 @@ async function fetchRoute(dest: Point) {
         )}
       </MapView>
 
-      {/* 🔁 Map type toggle */}
-      <View
-        style={{
-          position: "absolute",
-          top: 50,
-          right: 20,
-          flexDirection: "row",
-          backgroundColor: "rgba(255,255,255,0.9)",
-          borderRadius: 12,
-          padding: 4,
-        }}
-      >
-        {["standard", "hybrid"].map((t) => (
-          <TouchableOpacity
-            key={t}
-            onPress={() => setMapType(t as any)}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              backgroundColor: mapType === t ? "#2563eb" : "transparent",
-              borderRadius: 8,
-            }}
-          >
-            <Text
-              style={{
-                color: mapType === t ? "#fff" : "#64748b",
-              }}
-            >
-              {t}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ⬇️ Bottom panel */}
       <View
         style={{
           position: "absolute",
@@ -223,8 +212,8 @@ async function fetchRoute(dest: Point) {
             }}
           >
             <Text style={{ color: "#fff", textAlign: "center" }}>
-                Чиглэл батлах
-          </Text>
+              Чиглэл батлах
+            </Text>
           </TouchableOpacity>
         )}
       </View>

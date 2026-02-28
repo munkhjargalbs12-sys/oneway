@@ -16,13 +16,12 @@ function TabIcon({ focused, active, inactive }: any) {
 
 export default function TabsLayout() {
   return (
-    <Tabs screenOptions={{ headerShown: false }}>
+    <Tabs screenOptions={{ headerShown: false, tabBarShowLabel: false }}>
 
       {/* 🏠 HOME */}
       <Tabs.Screen
         name="home/index"
         options={{
-          tabBarShowLabel: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon
               focused={focused}
@@ -37,7 +36,6 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="rides/index"
         options={{
-          tabBarShowLabel: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon
               focused={focused}
@@ -54,7 +52,6 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile/index"
         options={{
-          tabBarShowLabel: false,
           tabBarIcon: ({ focused }) => (
             <TabIcon
               focused={focused}
@@ -62,6 +59,19 @@ export default function TabsLayout() {
               inactive={require("../../assets/icons/ProfileInactive.png")}
             />
           ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="notifications/index"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="history/index"
+        options={{
+          href: null,
         }}
       />
 

@@ -3,10 +3,11 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 
@@ -78,7 +79,10 @@ export default function Slide4({ active }: Props) {
   }, [active]);
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
       {/* TITLE */}
       <Animated.Text style={[styles.title, { opacity: titleFade }]}>
         Хотын түгжрэлийг хамтдаа {"\n"} бууруулъя
@@ -156,15 +160,17 @@ export default function Slide4({ active }: Props) {
           <Text style={styles.startText}>Эхлэх</Text>
         </TouchableOpacity>
       </Animated.View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     backgroundColor: "#ffffff",
     paddingHorizontal: 12,
+    alignItems: "center",
+    paddingBottom: 24,
   },
 
   title: {

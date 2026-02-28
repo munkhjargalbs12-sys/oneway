@@ -1,14 +1,13 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  SafeAreaView,
-} from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 export default function Withdraw() {
   const router = useRouter();
@@ -23,7 +22,7 @@ export default function Withdraw() {
     withdrawAmount > 0 && withdrawAmount <= balance;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <Text style={styles.header}>Withdraw</Text>
 
       <View style={styles.balanceBox}>
@@ -72,7 +71,7 @@ export default function Withdraw() {
       >
         <Text style={styles.back}>← Back</Text>
       </TouchableOpacity>
-    </SafeAreaView>
+    </View>
   );
 }
 

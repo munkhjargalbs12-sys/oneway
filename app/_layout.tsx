@@ -1,24 +1,26 @@
 import { Stack } from "expo-router";
+import React from "react";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 export default function RootLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      {/* ONBOARDING */}
-      <Stack.Screen name="onboarding" />
-
-      {/* AUTH */}
-      <Stack.Screen name="(auth)/login" />
-      <Stack.Screen name="(auth)/register" />
-
-      {/* MAIN APP */}
-      <Stack.Screen name="(tabs)" />
-
-      {/* LOCATION */}
-      <Stack.Screen name="location/index" />
-      <Stack.Screen name="location/map" />
-
-      {/* RIDE */}
-      <Stack.Screen name="ride" />
-    </Stack>
+    <SafeAreaProvider>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#54605b" }} edges={["top", "bottom"]}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: "#88998f" },
+          }}
+        >
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="(auth)/login" />
+          <Stack.Screen name="(auth)/register" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="location/index" />
+          <Stack.Screen name="location/map" />
+          <Stack.Screen name="ride" />
+        </Stack>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }

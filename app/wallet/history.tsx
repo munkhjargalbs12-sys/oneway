@@ -2,7 +2,6 @@ import { useRouter } from "expo-router";
 import React from "react";
 import {
     FlatList,
-    SafeAreaView,
     StyleSheet,
     Text,
     View,
@@ -19,7 +18,7 @@ export default function History() {
   const router = useRouter();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <Text style={styles.header}>Transaction History</Text>
 
       <FlatList
@@ -47,7 +46,7 @@ export default function History() {
       >
         ← Back
       </Text>
-    </SafeAreaView>
+    </View>
   );
 }
 

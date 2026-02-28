@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 
-export default function Slide1() {
+type Props = {
+  active: boolean;
+};
+
+export default function Slide1({ active }: Props) {
   // opacity values
   const titleFade = useRef(new Animated.Value(0)).current;
   const descFade = useRef(new Animated.Value(0)).current;
@@ -10,6 +14,14 @@ export default function Slide1() {
   const imageFade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (!active) return;
+
+    titleFade.setValue(0);
+    descFade.setValue(0);
+    bulletsFade.setValue(0);
+    highlightFade.setValue(0);
+    imageFade.setValue(0);
+
     Animated.stagger(200, [
       Animated.timing(titleFade, {
         toValue: 1,
@@ -37,7 +49,7 @@ export default function Slide1() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [active]);
 
   return (
     <View style={styles.container}>

@@ -40,7 +40,7 @@ export default function RegisterScreen() {
     setLoading(true);
 
     try {
-      const res = await register({ name, phone, password, role, avatar });
+      const res = await register({ name, phone, password, role, avatar_id: avatar });
 
       if (res.message) {
         setError(res.message);
