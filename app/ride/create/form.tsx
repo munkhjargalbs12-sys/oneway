@@ -12,13 +12,14 @@ import {
   View
 } from "react-native";
 import { apiFetch } from "../../../services/apiClient";
+import { API_URL } from "@/services/config";
 
 /**
  * ⚠️ DEV API URL
  * Android emulator: http://10.0.2.2:3000
  * iOS simulator: http://localhost:3000
  */
-const API_URL = "http://192.168.1.78:3000";
+
 
 const weekdays = ["Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан"];
 
@@ -361,3 +362,4 @@ const styles = StyleSheet.create({
   weekdayBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, marginRight: 6, marginBottom: 6, backgroundColor: "#e2e8f0" },
   weekdayActive: { backgroundColor: "#2563eb" },
 });
+

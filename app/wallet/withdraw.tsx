@@ -65,12 +65,6 @@ export default function Withdraw() {
         </LinearGradient>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={{ marginTop: 15 }}
-        onPress={() => router.back()}
-      >
-        <Text style={styles.back}>← Back</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -136,9 +130,5 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "white",
     fontWeight: "700",
-  },
-  back: {
-    color: "#60A5FA",
-    textAlign: "center",
   },
 });

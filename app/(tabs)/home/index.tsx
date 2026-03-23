@@ -1,5 +1,5 @@
+﻿import { apiFetch } from "@/services/apiClient";
 import { getToken } from "@/services/authStorage";
-import { apiFetch } from "@/services/apiClient";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -33,6 +33,8 @@ function HomeScreen() {
   const [activeRide, setActiveRide] = useState<any>(null);
   const [bookedRides, setBookedRides] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [activeTrustTip, setActiveTrustTip] = useState<number | null>(null);
+  const [activeShieldTip, setActiveShieldTip] = useState(false);
   const params = useLocalSearchParams<{
   startLat?: string;
   startLng?: string;
@@ -40,6 +42,27 @@ function HomeScreen() {
 
 const startLat = params.startLat;
 const startLng = params.startLng;
+
+  const trustLevel = Math.max(
+    1,
+    Math.min(5, Math.floor(Number(user?.trust_level ?? user?.trustLevel ?? user?.rating ?? 1)))
+  );
+  const shouldShowShieldPopup = trustLevel < 4;
+
+  const shieldHintText = "Итгэлцэл хүлээсэн жолооч буюу 4 одтой жолооч дээр идэвхжинэ.";
+
+  const onPressShield = () => {
+    if (!shouldShowShieldPopup) return;
+    setActiveShieldTip((prev) => !prev);
+  };
+
+  const trustLevelHints = [
+    { stars: 1, title: "⭐ 1 од", text: "Шинээр бүртгүүлсэн хэрэглэгч." },
+    { stars: 2, title: "⭐⭐ 2 од", text: "И-мэйл болон утас баталгаажуулсан." },
+    { stars: 3, title: "⭐⭐⭐ 3 од", text: "Төлбөрийн данс баталгаажуулсан." },
+    { stars: 4, title: "⭐⭐⭐⭐ 4 од", text: "Жолооч гэдгээ баталгаажуулсан." },
+    { stars: 5, title: "⭐⭐⭐⭐⭐ 5 од", text: "One Way-оос баталгаажуулсан." },
+  ];
 
   const loadHome = useCallback(async () => {
       const token = await getToken();
@@ -169,7 +192,7 @@ const startLng = params.startLng;
       >
         <View style={styles.container}>
 
-        {/* 👋 HEADER */}
+        {/* HEADER */}
         <View style={styles.headerRow}>
           <Text style={styles.greetingText}>Сайн уу, {user?.name}</Text>
           <View style={styles.iconTopRow}>
@@ -192,13 +215,28 @@ const startLng = params.startLng;
           </View>
         </View>
 
-        {/* 👤 AVATAR */}
-        <View style={styles.avatarCenter}>
+        {/* AVATAR */}
+  <View style={styles.avatarCenter}>
   <View style={styles.profileWrap}>
     <Image source={getAvatarSource()} style={styles.avatar} />
-    <Image source={icons.shield} style={styles.shield} />
+    <TouchableOpacity onPress={onPressShield} style={styles.shieldBtn} activeOpacity={0.8}>
+      <Image
+        source={trustLevel >= 4 ? icons.shieldActive : icons.shield}
+        style={styles.shield}
+      />
+    </TouchableOpacity>
+    {activeShieldTip && trustLevel < 4 && (
+      <View style={styles.shieldHintCard}>
+        <Text style={styles.shieldHintPlainText}>
+          {shieldHintText}
+        </Text>
+        <TouchableOpacity onPress={() => setActiveShieldTip(false)}>
+          <Text style={styles.trustHintClose}>Хаах</Text>
+        </TouchableOpacity>
+      </View>
+    )}
 
-    {/* 💰 OW COIN */}
+    {/* OW COIN */}
    <TouchableOpacity
   style={styles.owWrap}
   onPress={() => router.push("/wallet")}
@@ -215,27 +253,37 @@ const startLng = params.startLng;
 </View>
 
 
-        {/* ⭐ RATING */}
+        {/* RATING */}
         <View style={styles.ratingRow}>
               {[1, 2, 3, 4, 5].map((i) => (
-                <Image
-                  key={i}
-                  source={icons.starHalf}
-                  style={[
-                  styles.star,
-                {
-                  tintColor:
-                  i <= (user?.rating ?? 3) ? "#FFC107" : "#D9D9D9",
-                },
-              ]}
-           />
+                <TouchableOpacity key={i} onPress={() => setActiveTrustTip(i)}>
+                  <Image
+                    source={icons.starHalf}
+                    style={[
+                      styles.star,
+                      {
+                        tintColor:
+                          i <= trustLevel ? "#FFC107" : "#D9D9D9",
+                      },
+                    ]}
+                  />
+                </TouchableOpacity>
           ))}
         </View>
+        {activeTrustTip && (
+          <View style={styles.trustHintCard}>
+            <Text style={styles.trustHintTitle}>{trustLevelHints[activeTrustTip - 1]?.title}</Text>
+            <Text style={styles.trustHintText}>{trustLevelHints[activeTrustTip - 1]?.text}</Text>
+            <TouchableOpacity onPress={() => setActiveTrustTip(null)}>
+              <Text style={styles.trustHintClose}>Хаах</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {bookedRides.length > 0 && (
           <View style={styles.bookedWrap}>
             <Text style={styles.bookedTitle}>
-              Таны үүсгэсэн суудал ({bookedRides.length})
+              Таны сүүлийн захиалгууд ({bookedRides.length})
             </Text>
             <View style={styles.bookedScrollCard}>
               <ScrollView
@@ -269,8 +317,8 @@ const startLng = params.startLng;
                     📍 Очих газар: {ride.end_location || "Тодорхойгүй"}
                   </Text>
                   <Text style={styles.bookedPrice}>Суудал: {ride.price ?? 0}₮</Text>
-                  <Text style={styles.bookedBadge}>✓ Суудал захиалсан</Text>
-                  <Text style={styles.bookedPending}>⏳ Жолоочийн зөвшөөрөл хүлээгдэж байна</Text>
+                  <Text style={styles.bookedBadge}>✔ Суудал захиалсан</Text>
+                  <Text style={styles.bookedPending}>⏳ Жолоочийн зөвшөөрөл хүссэн байдал</Text>
                 </View>
 
                 <Image
@@ -285,11 +333,11 @@ const startLng = params.startLng;
         )}
         {bookedRides.length === 0 && (
           <View style={styles.emptyStateCard}>
-            <Text style={styles.emptyStateText}>Та суудал захиалаагүй байна.</Text>
+            <Text style={styles.emptyStateText}>Танд одоогоор захиалга байхгүй байна.</Text>
           </View>
         )}
 
-        {/* 🚗 ACTIVE ROUTE */}
+        {/* ACTIVE ROUTE */}
         {activeRide ? (
           <TouchableOpacity
             style={styles.card}
@@ -297,7 +345,7 @@ const startLng = params.startLng;
           >
             <View style={styles.cardHeader}>
               <Image source={icons.ways} style={styles.cardIcon} />
-              <Text style={styles.cardTitle}>Таны үүсгэсэн чиглэл</Text>
+                <Text style={styles.cardTitle}>Таны аялалын зам</Text>
             </View>
             <View style={styles.activeContentRow}>
               <View style={styles.activeInfo}>
@@ -305,7 +353,7 @@ const startLng = params.startLng;
                   <Text style={styles.activeName}>{getRideOwnerName(activeRide)}</Text>
                 ) : null}
                 <Text style={styles.activeDate}>
-                  Огноо: 📅 {activeRide.ride_date || "-"}
+                  Огноо: {activeRide.ride_date || "-"}
                 </Text>
                 <Text style={styles.activeTime}>⏰ {activeRide.start_time || "-"}</Text>
                 <Text style={styles.activeEnd} numberOfLines={2}>
@@ -321,7 +369,7 @@ const startLng = params.startLng;
           </TouchableOpacity>
         ) : (
           <View style={styles.emptyStateCard}>
-            <Text style={styles.emptyStateText}>Та чиглэл үүсгээгүй байна.</Text>
+            <Text style={styles.emptyStateText}>Идэвхтэй аялал одоогоор байхгүй байна.</Text>
           </View>
         )}
 
@@ -330,7 +378,7 @@ const startLng = params.startLng;
           onPress={() => router.push("/location")}
         >
           <Text style={styles.pickupText}>
-            📍 Та хаанаас явах вэ?
+              📍 Та хаанаас явна вэ?
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -340,7 +388,7 @@ const startLng = params.startLng;
           ]}
           onPress={() => {
             if (!startLat || !startLng) {
-              alert("Эхлээд явах байршлаа сонгоно уу");
+              alert("Эхлээд замын байршлаа сонгоно уу");
               return;
             }
 
@@ -353,9 +401,7 @@ const startLng = params.startLng;
             });
           }}
         >
-          <Text style={styles.createBtnText}>
-            очих байршил
-          </Text>
+            <Text style={styles.createBtnText}>Очиж явах</Text>
         </TouchableOpacity>
 
         </View>
@@ -366,7 +412,7 @@ const startLng = params.startLng;
 
 export default HomeScreen;
 
-/* 🧑 AVATAR MAP */
+/* AVATAR MAP */
 const avatars = {
   grandfa: require("../../../assets/profile/avatars/grandfa.png"),
   father: require("../../../assets/profile/avatars/father.png"),
@@ -385,10 +431,11 @@ const seatImages: Record<number, any> = {
   4: require("../../../assets/cars/4seat.png"),
 };
 
-/* 📦 ICON MAP */
+/* ICON MAP */
 const icons = {
   profile: require("../../../assets/icons/profile.png"),
   shield: require("../../../assets/icons/UnActive.png"),
+  shieldActive: require("../../../assets/icons/Active.png"),
   notification: require("../../../assets/icons/notiInactive.png"),
   coin: require("../../../assets/icons/kerdit.png"),
   starHalf: require("../../../assets/icons/star3.png"),
@@ -396,7 +443,7 @@ const icons = {
   ways: require("../../../assets/icons/ways.png"),
 };
 
-/* 🎨 STYLES */
+/* STYLES */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4F6F5" },
   scrollContent: { paddingBottom: 120 },
@@ -455,6 +502,7 @@ const styles = StyleSheet.create({
 
   profileWrap: {
     position: "relative",
+    overflow: "visible",
   },
 
   avatar: {
@@ -465,10 +513,38 @@ const styles = StyleSheet.create({
 
   shield: {
     position: "absolute",
-    bottom: -14,
+    bottom: -2,
     right: -14,
     width: 56,
     height: 56,
+  },
+  shieldBtn: {
+    position: "absolute",
+    bottom: -2,
+    right: -14,
+    width: 56,
+    height: 56,
+    zIndex: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  shieldHintCard: {
+    backgroundColor: "#ffffff",
+    borderColor: "#E5E7EB",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    alignSelf: "flex-start",
+    width: 220,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+    zIndex: 10,
   },
 
   ratingRow: {
@@ -476,6 +552,42 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     marginBottom: 12,
+  },
+
+  trustHintCard: {
+    backgroundColor: "#ffffff",
+    borderColor: "#E5E7EB",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  trustHintTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  shieldHintPlainText: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  trustHintText: {
+    fontSize: 13,
+    color: "#334155",
+    marginBottom: 6,
+  },
+  trustHintClose: {
+    color: "#2563eb",
+    fontWeight: "700",
   },
 
   star: {
@@ -751,3 +863,11 @@ bookedMeta: {
   color: "#64748b",
 },
 });
+
+
+
+
+
+
+
+

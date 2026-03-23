@@ -128,7 +128,7 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
           <TouchableOpacity
             onPress={() => {
               onClose();
-              router.push("../(auth)/forgot-password");
+              router.push("../(auth)/forget-password");
             }}
           >
             <Text style={styles.forgotText}>Нууц үг мартсан?</Text>
@@ -247,3 +247,4 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+

@@ -1,6 +1,6 @@
+import { API_URL } from "@/services/config";
 import { router, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
-import { API_URL } from "@/services/config";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
 import MapView, {
   Marker,
@@ -10,8 +10,6 @@ import MapView, {
 
 type Point = { latitude: number; longitude: number };
 
-// 🔥 BACKEND API
-
 export default function CreateWayRoute() {
   const params = useLocalSearchParams<{
     lat?: string;
@@ -20,43 +18,39 @@ export default function CreateWayRoute() {
     startLng?: string;
   }>();
 
-  const startLat = params.lat ?? params.startLat;
-  const startLng = params.lng ?? params.startLng;
+  const startLatRaw = params.lat ?? params.startLat;
+  const startLngRaw = params.lng ?? params.startLng;
+  const startLat = Number(startLatRaw);
+  const startLng = Number(startLngRaw);
 
   const mapRef = useRef<MapView | null>(null);
+  const [end, setEnd] = useState<Point | null>(null);
+  const [routeCoords, setRouteCoords] = useState<Point[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  if (!startLat || !startLng) {
+  if (!Number.isFinite(startLat) || !Number.isFinite(startLng)) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text>Эхлэх байршил олдсонгүй</Text>
+        <Text>????? ??????? ?????????</Text>
       </View>
     );
   }
 
   const start: Point = {
-    latitude: Number(startLat),
-    longitude: Number(startLng),
+    latitude: startLat,
+    longitude: startLng,
   };
 
-  console.log("START:", start);
-  console.log("API URL:", API_URL);
-
-  const [end, setEnd] = useState<Point | null>(null);
-  const [routeCoords, setRouteCoords] = useState<Point[]>([]);
-  const [mapType, setMapType] = useState<"standard" | "hybrid">("hybrid");
-  const [loading, setLoading] = useState(false);
-
-  // 🔓 Google polyline decode
   function decodePolyline(encoded: string) {
-    let points: Point[] = [];
-    let index = 0,
-      lat = 0,
-      lng = 0;
+    const points: Point[] = [];
+    let index = 0;
+    let lat = 0;
+    let lng = 0;
 
     while (index < encoded.length) {
-      let b,
-        shift = 0,
-        result = 0;
+      let b;
+      let shift = 0;
+      let result = 0;
       do {
         b = encoded.charCodeAt(index++) - 63;
         result |= (b & 0x1f) << shift;
@@ -84,15 +78,9 @@ export default function CreateWayRoute() {
     return points;
   }
 
-  // 🚗 Backend-ээс маршрут авах
   async function fetchRoute(dest: Point) {
     try {
       setLoading(true);
-
-      console.log("FETCH ROUTE CALLED");
-      console.log("START:", start);
-      console.log("DEST:", dest);
-      console.log("API:", API_URL);
 
       const res = await fetch(`${API_URL}/route`, {
         method: "POST",
@@ -105,15 +93,11 @@ export default function CreateWayRoute() {
         }),
       });
 
-      console.log("STATUS:", res.status);
-
       const text = await res.text();
-      console.log("RAW RESPONSE:", text);
+      const data = text ? JSON.parse(text) : {};
 
-      const data = JSON.parse(text);
-
-      if (!data.polyline) {
-        Alert.alert("Алдаа", "Маршрут олдсонгүй");
+      if (!res.ok || !data.polyline) {
+        Alert.alert("?????", data?.error || "??????? ?????????");
         return;
       }
 
@@ -125,8 +109,8 @@ export default function CreateWayRoute() {
         animated: true,
       });
     } catch (err) {
-      console.log("NETWORK ERROR:", err);
-      Alert.alert("Алдаа", "Backend холбогдсонгүй");
+      console.log("Route fetch failed:", err);
+      Alert.alert("?????", "Backend ?????????????");
     } finally {
       setLoading(false);
     }
@@ -138,7 +122,7 @@ export default function CreateWayRoute() {
         ref={mapRef}
         style={{ flex: 1 }}
         provider={PROVIDER_GOOGLE}
-        mapType={mapType}
+        mapType="hybrid"
         initialRegion={{
           latitude: start.latitude,
           longitude: start.longitude,
@@ -176,8 +160,7 @@ export default function CreateWayRoute() {
       >
         {!end ? (
           <Text style={{ textAlign: "center", color: "#64748b" }}>
-            📍 Очих байршлаа газрын зураг дээр{" "}
-            <Text style={{ fontWeight: "700" }}>удаан дарж</Text> сонгоно уу
+            ???? ???????? ?????? ????? ???? ????? ???? ??????? ??
           </Text>
         ) : (
           <TouchableOpacity
@@ -212,7 +195,7 @@ export default function CreateWayRoute() {
             }}
           >
             <Text style={{ color: "#fff", textAlign: "center" }}>
-              Чиглэл батлах
+              ?????? ??????
             </Text>
           </TouchableOpacity>
         )}

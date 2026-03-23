@@ -11,12 +11,15 @@ import {
 } from "react-native";
 import { AVATARS } from "../../constants/avatars";
 import { register } from "../../services/api";
-import { saveToken, saveUser } from "../../services/authStorage"; // ⭐ saveUser нэмэгдсэн
+import { saveToken, saveUser } from "../../services/authStorage";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<"passenger" | "driver">("passenger");
   const [avatar, setAvatar] = useState("guy");
   const [loading, setLoading] = useState(false);
@@ -25,8 +28,8 @@ export default function RegisterScreen() {
   const handleRegister = async () => {
     setError("");
 
-    if (!name || !phone || !password) {
-      return setError("Бүх талбарыг бөглөнө үү");
+    if (!name || !phone || !password || !confirmPassword) {
+      return setError("Бүх талбаруудыг бөглөнө үү");
     }
 
     if (phone.length !== 8) {
@@ -34,25 +37,36 @@ export default function RegisterScreen() {
     }
 
     if (password.length < 6) {
-      return setError("Нууц үг дор хаяж 6 тэмдэгт");
+      return setError("Нууц үг дор хаяж 6 тэмдэгт байх ёстой");
+    }
+
+    if (password !== confirmPassword) {
+      return setError("Нууц үг таарахгүй байна");
     }
 
     setLoading(true);
 
     try {
-      const res = await register({ name, phone, password, role, avatar_id: avatar });
+      const res = await register({
+        name,
+        phone,
+        password,
+        confirmPassword,
+        role,
+        avatar_id: avatar,
+      });
 
       if (res.message) {
         setError(res.message);
       } else if (res.token && res.user) {
         await saveToken(res.token);
-        await saveUser(res.user); // ⭐ НЭВТЭРСЭН ХЭРЭГЛЭГЧИЙГ ХАДГАЛНА
+        await saveUser(res.user);
         router.replace("/(tabs)/home");
       } else {
-        setError("Серверээс буруу хариу ирлээ");
+        setError("Серверт бүртгэл хийгдлээ ирлээ");
       }
     } catch {
-      setError("Бүртгэл амжилтгүй");
+      setError("Бүртгэл амжилтгүй боллоо");
     } finally {
       setLoading(false);
     }
@@ -63,10 +77,46 @@ export default function RegisterScreen() {
       <Text style={styles.title}>Шинээр бүртгүүлэх</Text>
 
       <TextInput placeholder="Нэр" value={name} onChangeText={setName} style={styles.input} />
-      <TextInput placeholder="Утасны дугаар" keyboardType="phone-pad" value={phone} onChangeText={setPhone} style={styles.input} />
-      <TextInput placeholder="Нууц үг" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
+      <TextInput
+        placeholder="Утасны дугаар"
+        keyboardType="phone-pad"
+        value={phone}
+        onChangeText={setPhone}
+        style={styles.input}
+      />
+      <View style={styles.passwordWrapper}>
+        <TextInput
+          placeholder="Нууц үг"
+          secureTextEntry={!showPassword}
+          value={password}
+          onChangeText={setPassword}
+          style={styles.passwordInput}
+        />
+        <TouchableOpacity
+          onPress={() => setShowPassword((prev) => !prev)}
+          style={styles.eyeButton}
+        >
+          <Text style={{ fontSize: 18 }}>{showPassword ? "🙈" : "👁️"}</Text>
+        </TouchableOpacity>
+      </View>
 
-      <Text style={styles.label}>Та жолооч уу зорчигч уу?</Text>
+      <View style={styles.passwordWrapper}>
+        <TextInput
+          placeholder="Нууц үг давтах"
+          secureTextEntry={!showConfirmPassword}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          style={styles.passwordInput}
+        />
+        <TouchableOpacity
+          onPress={() => setShowConfirmPassword((prev) => !prev)}
+          style={styles.eyeButton}
+        >
+          <Text style={{ fontSize: 18 }}>{showConfirmPassword ? "🙈" : "👁️"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.label}>Та жолооч уу, зорчигч уу?</Text>
       <View style={styles.row}>
         <TouchableOpacity
           style={[styles.roleBtn, role === "passenger" && styles.roleActive]}
@@ -108,7 +158,6 @@ export default function RegisterScreen() {
   );
 }
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, justifyContent: "center" },
   title: { fontSize: 22, fontWeight: "700", marginBottom: 20, textAlign: "center" },
@@ -118,6 +167,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     marginBottom: 14,
+  },
+  passwordWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 12,
+    marginBottom: 14,
+    backgroundColor: "#fff",
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 14,
+  },
+  eyeButton: {
+    paddingHorizontal: 12,
   },
   label: { marginBottom: 6, fontWeight: "600" },
   row: { flexDirection: "row", gap: 10, marginBottom: 14 },

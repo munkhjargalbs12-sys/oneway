@@ -21,5 +21,22 @@ export async function apiFetch(
     headers,
   });
 
-  return res.json();
+  const text = await res.text();
+  let data: any = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { message: text };
+    }
+  }
+
+  if (!res.ok) {
+    const message =
+      (data && (data.error || data.message)) ||
+      `Request failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  return data;
 }

@@ -153,7 +153,13 @@ export default function NotificationsScreen() {
   };
 
   const resolveBookingId = (item: any): number | null => {
-    const raw = item?.booking_id ?? item?.bookingId ?? null;
+    const raw =
+      item?.booking_id ??
+      item?.bookingId ??
+      item?.booking?.id ??
+      item?.data?.booking_id ??
+      item?.data?.bookingId ??
+      null;
     const id = Number(raw);
     return Number.isFinite(id) && id > 0 ? id : null;
   };
@@ -161,7 +167,16 @@ export default function NotificationsScreen() {
   const canReviewRequest = (item: any) => {
     const type = String(item?.type || "").toLowerCase();
     const bookingId = resolveBookingId(item);
-    return !!bookingId && (type === "booking" || type.includes("booking"));
+    if (!bookingId) return false;
+
+    const bookingStatus = String(item?.booking_status || item?.status || "").toLowerCase();
+    if (bookingStatus === "approved" || bookingStatus === "rejected" || bookingStatus === "cancelled") {
+      return false;
+    }
+
+    if (!type) return true;
+    if (type === "booking_approved" || type === "booking_rejected") return false;
+    return type === "booking" || type.includes("booking");
   };
 
   const handleDecision = async (item: any, action: "approve" | "reject") => {

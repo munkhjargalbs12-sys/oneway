@@ -1,4 +1,3 @@
-import { useRouter } from "expo-router";
 import React from "react";
 import {
     FlatList,
@@ -40,12 +39,6 @@ export default function History() {
         )}
       />
 
-      <Text
-        style={styles.back}
-        onPress={() => router.back()}
-      >
-        ← Back
-      </Text>
     </View>
   );
 }
@@ -75,10 +68,5 @@ const styles = StyleSheet.create({
   },
   amount: {
     fontWeight: "700",
-  },
-  back: {
-    marginTop: 20,
-    color: "#60A5FA",
-    textAlign: "center",
   },
 });

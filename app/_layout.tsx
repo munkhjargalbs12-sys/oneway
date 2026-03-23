@@ -8,14 +8,20 @@ export default function RootLayout() {
       <SafeAreaView style={{ flex: 1, backgroundColor: "#54605b" }} edges={["top", "bottom"]}>
         <Stack
           screenOptions={{
-            headerShown: false,
+            headerShown: true,
+            headerBackTitle: "",
+            headerBackTitleVisible: false,
+            headerTintColor: "#111827",
+            headerStyle: { backgroundColor: "#ffffff" },
+            headerTitle: "",
             contentStyle: { backgroundColor: "#88998f" },
           }}
         >
-          <Stack.Screen name="onboarding" />
-          <Stack.Screen name="(auth)/login" />
-          <Stack.Screen name="(auth)/register" />
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)/register" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="wallet" options={{ headerShown: false }} />
           <Stack.Screen name="location/index" />
           <Stack.Screen name="location/map" />
           <Stack.Screen name="ride" />
