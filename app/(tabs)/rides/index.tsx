@@ -1,7 +1,25 @@
-﻿import { apiFetch } from "@/services/apiClient";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, Image, StatusBar, Text, TouchableOpacity, View } from "react-native";
+import AppIconBadge from "@/components/AppIconBadge";
+import IllustratedEmptyState from "@/components/IllustratedEmptyState";
+import { AppFontFamily, AppTheme } from "@/constants/theme";
+import { apiFetch } from "@/services/apiClient";
+import {
+  extractBookedRideIds,
+  extractBookingStatusByRide,
+  extractBookingStatusLabelByRide,
+  getBookingStatusColor,
+  getBookingStatusLabel,
+} from "@/services/bookingStatus";
+import {
+  formatRadiusLabel,
+  getDefaultRadius,
+  getRideScope,
+  type RideScope,
+} from "@/services/rideSearch";
+import { useFocusEffect } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
+import { router, useLocalSearchParams } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 const seatImages: Record<number, any> = {
   1: require("../../../assets/cars/1seat.png"),
@@ -21,6 +39,20 @@ const avatars: Record<string, any> = {
   sister: require("../../../assets/profile/avatars/sister.png"),
 };
 
+type SearchPoint = {
+  lat: number;
+  lng: number;
+};
+
+function readString(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function readNumber(value: string | string[] | undefined) {
+  const parsed = Number(readString(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function getAvatarSource(avatarId?: string) {
   if (!avatarId) return avatars.sister;
   return avatars[avatarId] || avatars.sister;
@@ -34,219 +66,821 @@ function getRideOwnerName(ride: any) {
     ride?.name ||
     ride?.user?.name ||
     ride?.driver?.name ||
-    null
+    "Хэрэглэгч"
   );
 }
 
-function extractBookedRideIds(payload: any): number[] {
-  const raw =
-    (Array.isArray(payload?.ride_ids) && payload.ride_ids) ||
-    (Array.isArray(payload?.bookings) && payload.bookings) ||
-    (Array.isArray(payload?.items) && payload.items) ||
-    (Array.isArray(payload) && payload) ||
-    [];
-
-  const ids = raw
-    .map((entry: any) => Number(entry?.ride_id ?? entry?.ride?.id ?? entry?.id ?? entry))
-    .filter((id: number) => Number.isFinite(id));
-
-  return Array.from(new Set(ids));
+function getLocationLabel(value: unknown, fallback: string) {
+  const normalized = String(value || "").trim();
+  return normalized || fallback;
 }
 
-export default function Home() {
-  const { role, source, lat, lng, location, refresh } =
-    useLocalSearchParams();
+function getRouteLabel(ride: any) {
+  const startLocation = getLocationLabel(ride?.start_location, "Эхлэх цэг тодорхойгүй");
+  const endLocation = getLocationLabel(ride?.end_location, "Очих газар тодорхойгүй");
+  return `${startLocation} → ${endLocation}`;
+}
 
-  
+function formatPointLabel(point: SearchPoint | null, label?: string | null) {
+  const trimmed = String(label || "").trim();
+  if (trimmed) {
+    return trimmed;
+  }
 
-  const [rides, setRides] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [bookedRideIds, setBookedRideIds] = useState<number[]>([]);
+  if (!point) {
+    return "";
+  }
 
-  useEffect(() => {
-    // keep effect simple: delegate to fetchRides below
-    fetchRides();
-  }, [refresh]);
+  return `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`;
+}
 
-  // fetch function reused by focus effect and pull-to-refresh
-  const fetchRides = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      const [data, myBookings] = await Promise.all([
-        apiFetch("/rides").catch(() => []),
-        apiFetch("/bookings/mine").catch(() => ({ ride_ids: [] })),
-      ]);
-
-      const sorted = (data || []).sort(
-        (a: any, b: any) => Number(b?.id || 0) - Number(a?.id || 0)
-      );
-      setRides(sorted);
-      setBookedRideIds(
-        extractBookedRideIds(myBookings)
-      );
-    } catch (err) {
-      console.log("❌ Failed to load rides:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // reload when screen gains focus (so newly created rides appear)
-  useFocusEffect(
-    useCallback(() => {
-      fetchRides();
-    }, [fetchRides])
-  );
-
-const getAvailableSeats = (ride: any) => {
-  // Prefer backend-provided `available_seats`, then `seats`, then compute from seats_total - seats_taken
+function getAvailableSeatCount(ride: any) {
   if (typeof ride?.available_seats === "number") {
-    return Math.min(Math.max(ride.available_seats, 1), 4);
+    return Math.max(0, ride.available_seats);
   }
 
   if (typeof ride?.seats === "number") {
-    return Math.min(Math.max(ride.seats, 1), 4);
+    return Math.max(0, ride.seats);
   }
 
   const seatsTotal = Number(ride?.seats_total) || 0;
   const seatsTaken = Number(ride?.seats_taken) || 0;
-  const avail = Math.max(1, seatsTotal - seatsTaken || 1);
-  return Math.min(avail, 4);
-};
+  return Math.max(0, seatsTotal - seatsTaken);
+}
 
-  const containerStyle = { flex: 1 };
+function getSeatIllustrationCount(availableSeats: number) {
+  return Math.min(Math.max(availableSeats || 1, 1), 4);
+}
 
-  const fabBottom = 20;
+function toRideTimestamp(ride: any) {
+  const dateValue = String(ride?.ride_date || "");
+  const timeValue = String(ride?.start_time || "00:00").slice(0, 5);
+  const timestamp = new Date(`${dateValue}T${timeValue}:00`).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getRideStatusLabel(status?: string | null) {
+  switch (String(status || "").toLowerCase()) {
+    case "scheduled":
+      return "Төлөвлөгдсөн";
+    case "pending":
+      return "Хүлээгдэж байна";
+    case "started":
+      return "Явж байна";
+    default:
+      return "Идэвхтэй";
+  }
+}
+
+function getRideStatusTone(status?: string | null) {
+  const normalized = String(status || "").toLowerCase();
+
+  if (normalized === "started") {
+    return {
+      backgroundColor: "#f8ecd8",
+      color: AppTheme.colors.warning,
+    };
+  }
+
+  if (normalized === "scheduled") {
+    return {
+      backgroundColor: "#e7eefc",
+      color: "#2f5fb4",
+    };
+  }
+
+  if (normalized === "pending") {
+    return {
+      backgroundColor: "#f2eee5",
+      color: AppTheme.colors.textMuted,
+    };
+  }
+
+  return {
+    backgroundColor: AppTheme.colors.accentGlow,
+    color: AppTheme.colors.accentDeep,
+  };
+}
+
+export default function RideListScreen() {
+  const params = useLocalSearchParams<{
+    scope?: string;
+    refresh?: string;
+    radiusM?: string;
+    searchStartLat?: string;
+    searchStartLng?: string;
+    searchStartLabel?: string;
+    searchEndLat?: string;
+    searchEndLng?: string;
+    searchEndLabel?: string;
+  }>();
+
+  const activeScope: RideScope =
+    readString(params.scope) === "intercity" ? "intercity" : "local";
+  const searchStartLat = readNumber(params.searchStartLat);
+  const searchStartLng = readNumber(params.searchStartLng);
+  const searchEndLat = readNumber(params.searchEndLat);
+  const searchEndLng = readNumber(params.searchEndLng);
+  const searchStart = useMemo(
+    () =>
+      searchStartLat === null || searchStartLng === null
+        ? null
+        : { lat: searchStartLat, lng: searchStartLng },
+    [searchStartLat, searchStartLng]
+  );
+  const searchEnd = useMemo(
+    () =>
+      searchEndLat === null || searchEndLng === null
+        ? null
+        : { lat: searchEndLat, lng: searchEndLng },
+    [searchEndLat, searchEndLng]
+  );
+  const radiusMeters = readNumber(params.radiusM) ?? getDefaultRadius(activeScope);
+  const hasSearch = Boolean(searchStart && searchEnd);
+  const searchStartLabel = formatPointLabel(searchStart, readString(params.searchStartLabel));
+  const searchEndLabel = formatPointLabel(searchEnd, readString(params.searchEndLabel));
+  const refreshToken = readString(params.refresh) || "";
+
+  const [rides, setRides] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [bookedRideIds, setBookedRideIds] = useState<number[]>([]);
+  const [bookingStatusByRide, setBookingStatusByRide] = useState<Record<number, string>>({});
+  const [bookingStatusLabelByRide, setBookingStatusLabelByRide] = useState<Record<number, string>>({});
+
+  const loadRides = useCallback(async () => {
+    void refreshToken;
+    setLoading(true);
+
+    try {
+      const [ridePayload, myBookings] = await Promise.all([
+        hasSearch && searchStart && searchEnd
+          ? apiFetch("/rides/search", {
+              method: "POST",
+              body: JSON.stringify({
+                start: searchStart,
+                end: searchEnd,
+                radius_m: radiusMeters,
+                scope: activeScope,
+              }),
+            }).catch(() => [])
+          : apiFetch("/rides").catch(() => []),
+        apiFetch("/bookings/mine").catch(() => ({ ride_ids: [] })),
+      ]);
+
+      const nextBookingStatusByRide = extractBookingStatusByRide(myBookings);
+      const nextBookingStatusLabelByRide = extractBookingStatusLabelByRide(myBookings);
+
+      const nextRides = (Array.isArray(ridePayload) ? ridePayload : [])
+        .filter((ride) => (hasSearch ? true : getRideScope(ride) === activeScope))
+        .sort((first, second) => toRideTimestamp(first) - toRideTimestamp(second));
+
+      setRides(nextRides);
+      setBookedRideIds(extractBookedRideIds(myBookings));
+      setBookingStatusByRide(nextBookingStatusByRide);
+      setBookingStatusLabelByRide(nextBookingStatusLabelByRide);
+    } catch (error) {
+      console.log("Failed to load rides:", error);
+      setRides([]);
+      setBookedRideIds([]);
+      setBookingStatusByRide({});
+      setBookingStatusLabelByRide({});
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    activeScope,
+    hasSearch,
+    radiusMeters,
+    searchEnd,
+    searchStart,
+    refreshToken,
+  ]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRides();
+    }, [loadRides])
+  );
+
+  const searchSummary = useMemo(() => {
+    if (!hasSearch) {
+      return null;
+    }
+
+    return `${searchStartLabel} → ${searchEndLabel}`;
+  }, [hasSearch, searchEndLabel, searchStartLabel]);
+
+  const scopeSummary = useMemo(() => {
+    return activeScope === "intercity"
+      ? "Аймаг, хот хоорондын урт чиглэлүүдийг нэг таб дээрээс харна."
+      : "Ойрын зам, хот доторх чиглэлүүдийг эхлэх ба очих цэгээр нь шүүж харна.";
+  }, [activeScope]);
+
+  const handleScopeChange = useCallback(
+    (nextScope: RideScope) => {
+      if (nextScope === activeScope) {
+        return;
+      }
+
+      router.replace({
+        pathname: "/rides",
+        params: {
+          scope: nextScope,
+        },
+      });
+    },
+    [activeScope]
+  );
+
+  const openSearch = useCallback(() => {
+    router.push({
+      pathname: "/ride/search" as never,
+      params: {
+        scope: activeScope,
+        radiusM: String(radiusMeters),
+        ...(searchStart ? { startLat: String(searchStart.lat), startLng: String(searchStart.lng) } : {}),
+        ...(searchStartLabel ? { startLabel: searchStartLabel } : {}),
+        ...(searchEnd ? { endLat: String(searchEnd.lat), endLng: String(searchEnd.lng) } : {}),
+        ...(searchEndLabel ? { endLabel: searchEndLabel } : {}),
+      },
+    });
+  }, [activeScope, radiusMeters, searchEnd, searchEndLabel, searchStart, searchStartLabel]);
+
+  const clearSearch = useCallback(() => {
+    router.replace({
+      pathname: "/rides",
+      params: {
+        scope: activeScope,
+      },
+    });
+  }, [activeScope]);
 
   return (
-    <View style={containerStyle}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
-      <Text style={{ fontSize: 22, fontWeight: "600", marginBottom: 12 }}>
-        Өглөөний чиглэлүүд
-      </Text>
+    <View style={styles.container}>
+      <FlatList
+        data={rides}
+        keyExtractor={(item) => String(item.id)}
+        refreshing={loading}
+        onRefresh={loadRides}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View style={styles.headerWrap}>
+            <LinearGradient
+              colors={[AppTheme.colors.text, AppTheme.colors.accentDeep]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroCard}
+            >
+              <Text style={styles.heroEyebrow}>Route Board</Text>
+              <Text style={styles.heroTitle}>
+                {activeScope === "intercity" ? "Хот хоорондын чиглэлүүд" : "Хот доторх чиглэлүүд"}
+              </Text>
+              <Text style={styles.heroBody}>{scopeSummary}</Text>
 
-      <Text style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>
-        {source === "gps" && "📍 Миний байршил (GPS)"}
-        {source === "manual" && `📍 Явах байршил: ${location}`}
-        {source === "map" && "📍 Газрын зургаас сонгосон байршил"}
-      </Text>
+              <View style={styles.heroStatsRow}>
+                <View style={styles.heroStatCard}>
+                  <Text style={styles.heroStatValue}>{rides.length}</Text>
+                  <Text style={styles.heroStatLabel}>
+                    {hasSearch ? "Тохирсон чиглэл" : "Нээлттэй чиглэл"}
+                  </Text>
+                </View>
+                <View style={styles.heroStatCard}>
+                  <Text style={styles.heroStatValue}>{formatRadiusLabel(radiusMeters)}</Text>
+                  <Text style={styles.heroStatLabel}>Одоогийн радиус</Text>
+                </View>
+              </View>
+            </LinearGradient>
 
-      {role === "driver" && (
-        <TouchableOpacity
-          onPress={() => router.push("../")}
-          style={{
-            backgroundColor: "#22c55e",
-            padding: 14,
-            borderRadius: 10,
-            marginBottom: 12,
-          }}
-        >
-          <Text style={{ color: "#fff", textAlign: "center", fontSize: 16 }}>
-            ➕ Суудал нэмэх
-          </Text>
-        </TouchableOpacity>
-      )}
-<FlatList
-  data={rides}
-  keyExtractor={(item) => String(item.id)}
-  contentContainerStyle={{ paddingBottom: 120 }}
-  refreshing={loading}
-  renderItem={({ item }) => {
-    const availableSeats = getAvailableSeats(item);
-    const isBooked = bookedRideIds.includes(Number(item.id));
-    const ownerName = getRideOwnerName(item);
+            <View style={styles.segmentWrap}>
+              <TouchableOpacity
+                activeOpacity={0.92}
+                style={[styles.segmentButton, activeScope === "local" && styles.segmentButtonActive]}
+                onPress={() => handleScopeChange("local")}
+              >
+                <Text
+                  style={[styles.segmentText, activeScope === "local" && styles.segmentTextActive]}
+                >
+                  Хот дотор
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.92}
+                style={[styles.segmentButton, activeScope === "intercity" && styles.segmentButtonActive]}
+                onPress={() => handleScopeChange("intercity")}
+              >
+                <Text
+                  style={[
+                    styles.segmentText,
+                    activeScope === "intercity" && styles.segmentTextActive,
+                  ]}
+                >
+                  Хот хооронд
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-    return (
-<TouchableOpacity
-  onPress={() =>
-    router.push({
-      pathname: "/ride/[id]",
-      params: {
-        id: String(item.id),
-        ...(role ? { role: String(role) } : {}),
-      },
-    })
-  }
-  style={{
-    flexDirection: "row",
-    alignItems: "center",
+            <View style={styles.searchCard}>
+              <View style={styles.searchCardTop}>
+                <View style={styles.searchHeadingWrap}>
+                  <AppIconBadge
+                    name={hasSearch ? "travel-explore" : "search"}
+                    theme="accent"
+                    style={styles.searchBadge}
+                  />
+                  <View style={styles.searchCopyWrap}>
+                    <Text style={styles.searchTitle}>Чиглэл хайх</Text>
+                    <Text style={styles.searchBody}>
+                      Эхлэх цэг, очих цэгээ газрын зургаар эсвэл үгээр сонгоод заруудаас шүүж харна.
+                    </Text>
+                  </View>
+                </View>
 
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#ffffff",
-    marginBottom: 12,
+                <TouchableOpacity activeOpacity={0.92} style={styles.primaryButton} onPress={openSearch}>
+                  <Text style={styles.primaryButtonText}>
+                    {hasSearch ? "Хайлтаа өөрчлөх" : "Чиглэл хайх"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-    borderWidth: 1,
-    borderColor: "#f0f0f0",
-  }}
->
-  {/* ① Profile зураг */}
- <Image
-  source={getAvatarSource(item.avatar_id)}
-  style={{
-    width: 60,
-    height: 60,
-    borderRadius: 28,
-    marginRight: 12,
-  }}
-/>
+              {hasSearch ? (
+                <View style={styles.filterSummaryCard}>
+                  <Text style={styles.filterSummaryLabel}>Идэвхтэй хайлт</Text>
+                  <Text style={styles.filterSummaryValue}>{searchSummary}</Text>
+                  <View style={styles.filterMetaRow}>
+                    <Text style={styles.filterMetaText}>Радиус: {formatRadiusLabel(radiusMeters)}</Text>
+                    <TouchableOpacity activeOpacity={0.92} onPress={clearSearch}>
+                      <Text style={styles.clearSearchText}>Хайлтыг цэвэрлэх</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          <IllustratedEmptyState
+            icon={loading ? "hourglass-empty" : "map"}
+            eyebrow={activeScope === "intercity" ? "Intercity Routes" : "City Routes"}
+            title={
+              loading
+                ? "Чиглэлүүдийг ачаалж байна..."
+                : hasSearch
+                  ? "Тохирох чиглэл хараахан олдсонгүй"
+                  : "Одоогоор нээлттэй чиглэл алга"
+            }
+            body={
+              hasSearch
+                ? "Хайлтын радиусаа өөрчилж эсвэл өөр эхлэх, очих цэг сонгоод дахин шалгаарай."
+                : "Шинэ чиглэл нэмэгдэхэд энд шууд харагдана. Хайлтаар шүүгээд өөрт тохирохыг нь олж болно."
+            }
+            tone={activeScope === "intercity" ? "ink" : "accent"}
+            style={styles.emptyCard}
+          />
+        }
+        renderItem={({ item }) => {
+          const rideId = Number(item?.id);
+          const availableSeats = getAvailableSeatCount(item);
+          const seatIllustrationCount = getSeatIllustrationCount(availableSeats);
+          const ownerName = getRideOwnerName(item);
+          const rideStatus = String(item?.status || "active").toLowerCase();
+          const rideStatusLabel = getRideStatusLabel(rideStatus);
+          const rideStatusTone = getRideStatusTone(rideStatus);
+          const isBookableStatus = ["active", "scheduled", "pending"].includes(rideStatus);
+          const bookingStatus = String(
+            item?.booking_status || bookingStatusByRide[rideId] || ""
+          ).toLowerCase();
+          const bookingStatusLabel =
+            item?.booking_status_label ||
+            bookingStatusLabelByRide[rideId] ||
+            (bookingStatus ? getBookingStatusLabel(bookingStatus) : "");
+          const isBooked = bookedRideIds.includes(rideId);
+          const routeLabel = getRouteLabel(item);
+          const showBookCta = !isBooked && availableSeats > 0 && isBookableStatus;
 
+          return (
+            <TouchableOpacity
+              activeOpacity={0.92}
+              style={styles.card}
+              onPress={() =>
+                router.push({
+                  pathname: "/ride/[id]",
+                  params: {
+                    id: String(item.id),
+                    role: "rider",
+                  },
+                })
+              }
+            >
+              <View style={styles.cardHeader}>
+                <View style={styles.driverWrap}>
+                  <Image source={getAvatarSource(item.avatar_id)} style={styles.avatar} />
+                  <View style={styles.driverMeta}>
+                    <Text style={styles.driverName}>{ownerName}</Text>
+                    <Text style={styles.dateText}>
+                      {item.ride_date || "-"} · {String(item.start_time || "-").slice(0, 5)}
+                    </Text>
+                  </View>
+                </View>
 
-  {/* ② Текст мэдээлэл огноо */}
-    <View style={{ flex: 1 }}>
-    <View style={{ marginBottom: 4 }}>
-      {ownerName ? (
-        <Text style={{ fontSize: 13, fontWeight: "700", color: "#0f172a" }}>
-          {ownerName}
-        </Text>
-      ) : null}
-      <Text style={{ fontSize: 12, color: "#64748b" }}>
-          Огноо: 📅 {item.ride_date}
-      </Text>
+                <View style={styles.priceChip}>
+                  <Text style={styles.priceCaption}>1 суудал</Text>
+                  <Text style={styles.priceText}>{Number(item?.price || 0).toLocaleString()}₮</Text>
+                </View>
+              </View>
 
-      <Text style={{ fontWeight: "600", fontSize: 14 }}>
-        ⏰ {item.start_time}
-      </Text>
-      {isBooked && (
-        <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "700", color: "#16a34a" }}>
-          ✓ Суудал захиалсан
-        </Text>
-      )}
-    </View>
-      <Text
-          style={{ fontSize: 12, color: "#475569", marginTop: 4 }}
-          numberOfLines={2}
->
-        📍 Очих газар:{item.end_location}
-    </Text>
+              <View style={styles.routeRow}>
+                <View style={styles.routeCopy}>
+                  <Text style={styles.routeLabel}>{routeLabel}</Text>
+                  <Text style={styles.routeMeta}>
+                    {activeScope === "intercity" ? "Хот хоорондын чиглэл" : "Хот доторх чиглэл"}
+                  </Text>
 
+                  <View style={styles.metaChipRow}>
+                    <View
+                      style={[
+                        styles.metaChip,
+                        { backgroundColor: rideStatusTone.backgroundColor },
+                      ]}
+                    >
+                      <Text style={[styles.metaChipText, { color: rideStatusTone.color }]}>
+                        {rideStatusLabel}
+                      </Text>
+                    </View>
 
-    <Text style={{ fontSize: 12, marginTop: 2 }}>
-      Суудал: {item.price}₮
-    </Text>
-  </View>
+                    <View style={styles.metaChip}>
+                      <Text style={styles.metaChipText}>{availableSeats} сул суудал</Text>
+                    </View>
 
-  {/* ③ Машины зураг */}
-  <Image
-    source={seatImages[availableSeats] || seatImages[1]}
-    style={{
-      width: 80,
-      height: 90,
-      resizeMode: "contain",
-      marginLeft: 8,
-    }}
-  />
-</TouchableOpacity>
+                    {isBooked && bookingStatusLabel ? (
+                      <View
+                        style={[
+                          styles.metaChip,
+                          {
+                            backgroundColor: `${getBookingStatusColor(bookingStatus)}16`,
+                            borderColor: `${getBookingStatusColor(bookingStatus)}33`,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.metaChipText,
+                            { color: getBookingStatusColor(bookingStatus) },
+                          ]}
+                        >
+                          {bookingStatusLabel}
+                        </Text>
+                      </View>
+                    ) : null}
 
-    );
-  }}
-/>
+                    {hasSearch &&
+                    Number.isFinite(Number(item?.origin_distance_m)) &&
+                    Number.isFinite(Number(item?.destination_distance_m)) ? (
+                      <View style={styles.metaChip}>
+                        <Text style={styles.metaChipText}>
+                          Match {formatRadiusLabel(Number(item.origin_distance_m))} ·{" "}
+                          {formatRadiusLabel(Number(item.destination_distance_m))}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
 
+                <Image
+                  source={seatImages[seatIllustrationCount] || seatImages[1]}
+                  style={styles.seatImage}
+                />
+              </View>
 
-      {/* Floating add button removed from this screen — creation happens on Home */}
+              {showBookCta ? (
+                <View style={styles.cardAction}>
+                  <Text style={styles.cardActionText}>Суудал захиалах</Text>
+                  <Text style={styles.cardActionHint}>Дэлгэрэнгүй</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          );
+        }}
+      />
     </View>
   );
 }
 
-
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: AppTheme.colors.canvas,
+  },
+  listContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 42,
+  },
+  headerWrap: {
+    paddingTop: 18,
+    paddingBottom: 22,
+    gap: 16,
+  },
+  heroCard: {
+    borderRadius: AppTheme.radius.lg,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    ...AppTheme.shadow.floating,
+  },
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.72)",
+    fontFamily: AppFontFamily,
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  },
+  heroTitle: {
+    color: AppTheme.colors.white,
+    fontFamily: AppFontFamily,
+    fontSize: 28,
+    fontWeight: "700",
+    lineHeight: 34,
+  },
+  heroBody: {
+    color: "rgba(255,255,255,0.82)",
+    fontFamily: AppFontFamily,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 10,
+  },
+  heroStatsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 18,
+  },
+  heroStatCard: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: AppTheme.radius.md,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  heroStatValue: {
+    color: AppTheme.colors.white,
+    fontFamily: AppFontFamily,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  heroStatLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontFamily: AppFontFamily,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  segmentWrap: {
+    flexDirection: "row",
+    gap: 10,
+    backgroundColor: AppTheme.colors.canvasMuted,
+    borderRadius: AppTheme.radius.pill,
+    padding: 6,
+  },
+  segmentButton: {
+    flex: 1,
+    borderRadius: AppTheme.radius.pill,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  segmentButtonActive: {
+    backgroundColor: AppTheme.colors.card,
+    ...AppTheme.shadow.card,
+  },
+  segmentText: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  segmentTextActive: {
+    color: AppTheme.colors.text,
+  },
+  searchCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: AppTheme.radius.lg,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    padding: 18,
+    gap: 16,
+    ...AppTheme.shadow.card,
+  },
+  searchCardTop: {
+    gap: 16,
+  },
+  searchHeadingWrap: {
+    flexDirection: "row",
+    gap: 14,
+    alignItems: "flex-start",
+  },
+  searchBadge: {
+    marginTop: 2,
+  },
+  searchCopyWrap: {
+    flex: 1,
+  },
+  searchTitle: {
+    color: AppTheme.colors.text,
+    fontFamily: AppFontFamily,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  searchBody: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 6,
+  },
+  primaryButton: {
+    alignSelf: "flex-start",
+    backgroundColor: AppTheme.colors.accent,
+    borderRadius: AppTheme.radius.pill,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  primaryButtonText: {
+    color: AppTheme.colors.white,
+    fontFamily: AppFontFamily,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  filterSummaryCard: {
+    borderRadius: AppTheme.radius.md,
+    backgroundColor: AppTheme.colors.cardSoft,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    padding: 14,
+    gap: 8,
+  },
+  filterSummaryLabel: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  filterSummaryValue: {
+    color: AppTheme.colors.text,
+    fontFamily: AppFontFamily,
+    fontSize: 16,
+    fontWeight: "700",
+    lineHeight: 22,
+  },
+  filterMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  filterMetaText: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 13,
+  },
+  clearSearchText: {
+    color: AppTheme.colors.accentDeep,
+    fontFamily: AppFontFamily,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  emptyCard: {
+    marginTop: 8,
+  },
+  card: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: AppTheme.radius.lg,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    padding: 18,
+    marginBottom: 14,
+    ...AppTheme.shadow.card,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  driverWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  driverMeta: {
+    flex: 1,
+  },
+  driverName: {
+    color: AppTheme.colors.text,
+    fontFamily: AppFontFamily,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  dateText: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  priceChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: AppTheme.radius.pill,
+    backgroundColor: AppTheme.colors.accentGlow,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.accentSoft,
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  priceCaption: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 11,
+  },
+  priceText: {
+    color: AppTheme.colors.accentDeep,
+    fontFamily: AppFontFamily,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  routeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 16,
+  },
+  routeCopy: {
+    flex: 1,
+  },
+  routeLabel: {
+    color: AppTheme.colors.text,
+    fontFamily: AppFontFamily,
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 24,
+  },
+  routeMeta: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  cardAction: {
+    marginTop: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.accentSoft,
+    backgroundColor: AppTheme.colors.accentGlow,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  cardActionText: {
+    color: AppTheme.colors.accentDeep,
+    fontFamily: AppFontFamily,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  cardActionHint: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 12,
+  },
+  metaChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  metaChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: AppTheme.radius.pill,
+    backgroundColor: AppTheme.colors.cardSoft,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+  },
+  metaChipText: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  seatImage: {
+    width: 86,
+    height: 78,
+    resizeMode: "contain",
+  },
+});

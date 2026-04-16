@@ -1,8 +1,10 @@
+import { AppTheme } from "@/constants/theme";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -11,9 +13,9 @@ import {
 } from "react-native";
 import { login } from "../services/api";
 import {
-  saveRemembered,
-  getRemembered,
   clearRemembered,
+  getRemembered,
+  saveRemembered,
 } from "../services/authStorage";
 
 type Props = {
@@ -30,7 +32,6 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // ⭐ Modal нээгдэх бүрд санасан мэдээлэл байвал бөглөнө
   useEffect(() => {
     const loadRemembered = async () => {
       const creds = await getRemembered();
@@ -58,7 +59,6 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
       if (res.message) {
         setError(res.message);
       } else if (res.token && res.user) {
-        // ⭐ "Намайг сана" логик
         if (rememberMe) {
           await saveRemembered(phone, password);
         } else {
@@ -70,7 +70,7 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
       } else {
         setError("Серверээс буруу хариу ирлээ");
       }
-    } catch (e) {
+    } catch {
       setError("Сервертэй холбогдож чадсангүй");
     } finally {
       setLoading(false);
@@ -78,14 +78,20 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.overlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+
         <View style={styles.card}>
-          <Text style={styles.title}>Нэвтрэх</Text>
+          <Text style={styles.eyebrow}>Нэвтрэх</Text>
+          <Text style={styles.title}>Тавтай морил</Text>
+          <Text style={styles.subtitle}>
+            Утасны дугаар болон нууц үгээ оруулаад аяллаа үргэлжлүүлээрэй.
+          </Text>
 
           <TextInput
             placeholder="Утасны дугаар"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={AppTheme.colors.textMuted}
             keyboardType="phone-pad"
             value={phone}
             onChangeText={setPhone}
@@ -95,7 +101,7 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
           <View style={styles.passwordWrapper}>
             <TextInput
               placeholder="Нууц үг"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={AppTheme.colors.textMuted}
               secureTextEntry={!showPassword}
               value={password}
               onChangeText={setPassword}
@@ -105,9 +111,7 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
               onPress={() => setShowPassword(!showPassword)}
               style={styles.eyeButton}
             >
-              <Text style={{ fontSize: 18 }}>
-                {showPassword ? "🙈" : "👁"}
-              </Text>
+              <Text style={styles.eyeIcon}>{showPassword ? "🙈" : "👁"}</Text>
             </TouchableOpacity>
           </View>
 
@@ -134,11 +138,28 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
             <Text style={styles.forgotText}>Нууц үг мартсан?</Text>
           </TouchableOpacity>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <TouchableOpacity
+            onPress={() => {
+              onClose();
+              router.push("/api-check");
+            }}
+          >
+            <Text style={styles.debugLink}>API шалгах</Text>
+          </TouchableOpacity>
 
-          <TouchableOpacity style={styles.button} onPress={submit}>
+          {error ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.error}>{error}</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={submit}
+            disabled={loading}
+          >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={AppTheme.colors.white} />
             ) : (
               <Text style={styles.buttonText}>Нэвтрэх</Text>
             )}
@@ -153,98 +174,139 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
   );
 }
 
-
-
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(18, 28, 24, 0.48)",
     justifyContent: "center",
     padding: 20,
   },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 28,
     padding: 20,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    ...AppTheme.shadow.floating,
+  },
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: AppTheme.colors.accent,
+    marginBottom: 8,
+    textAlign: "center",
   },
   title: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "700",
-    marginBottom: 16,
+    marginBottom: 8,
     textAlign: "center",
+    color: AppTheme.colors.text,
+  },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: AppTheme.colors.textMuted,
+    textAlign: "center",
+    marginBottom: 16,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#202020",
-    borderRadius: 12,
-    padding: 12,
+    borderColor: AppTheme.colors.border,
+    borderRadius: 16,
+    padding: 14,
     marginBottom: 12,
-    color: "#111827",
-    backgroundColor: "#fff",
+    color: AppTheme.colors.text,
+    backgroundColor: AppTheme.colors.cardSoft,
   },
   passwordWrapper: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#202020",
-    borderRadius: 12,
+    borderColor: AppTheme.colors.border,
+    borderRadius: 16,
     marginBottom: 12,
-    backgroundColor: "#fff",
+    backgroundColor: AppTheme.colors.cardSoft,
   },
   passwordInput: {
     flex: 1,
-    padding: 12,
-    color: "#111827",
+    padding: 14,
+    color: AppTheme.colors.text,
   },
   eyeButton: {
     paddingHorizontal: 12,
   },
+  eyeIcon: {
+    fontSize: 18,
+  },
   rememberRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   checkbox: {
     width: 18,
     height: 18,
-    borderRadius: 4,
+    borderRadius: 5,
     borderWidth: 2,
-    borderColor: "#22c55e",
+    borderColor: AppTheme.colors.accent,
     marginRight: 8,
+    backgroundColor: AppTheme.colors.card,
   },
   checkboxActive: {
-    backgroundColor: "#22c55e",
+    backgroundColor: AppTheme.colors.accent,
   },
   rememberText: {
     fontSize: 14,
-    color: "#374151",
+    color: AppTheme.colors.textMuted,
   },
   forgotText: {
     marginBottom: 8,
     textAlign: "right",
-    color: "#22c55e",
+    color: AppTheme.colors.accentDeep,
     fontSize: 14,
+    fontWeight: "600",
   },
-  button: {
-    backgroundColor: "#22c55e",
-    padding: 14,
+  debugLink: {
+    marginBottom: 10,
+    textAlign: "right",
+    color: AppTheme.colors.accent,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  errorCard: {
+    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 16,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-  close: {
-    marginTop: 10,
-    textAlign: "center",
-    color: "#6B7280",
+    backgroundColor: "#f7e2dc",
+    borderWidth: 1,
+    borderColor: "#ebc7bc",
   },
   error: {
-    color: "#ef4444",
-    marginBottom: 8,
+    color: AppTheme.colors.danger,
     textAlign: "center",
   },
+  button: {
+    backgroundColor: AppTheme.colors.accent,
+    padding: 15,
+    borderRadius: 18,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.65,
+  },
+  buttonText: {
+    color: AppTheme.colors.white,
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  close: {
+    marginTop: 12,
+    textAlign: "center",
+    color: AppTheme.colors.textMuted,
+  },
 });
-

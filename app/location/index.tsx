@@ -1,25 +1,17 @@
-import * as Location from "expo-location";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { AppFontFamily, AppTheme } from "@/constants/theme";
 import { apiFetch } from "@/services/apiClient";
-import {
-  Alert,
-  Image,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import * as Location from "expo-location";
+import { LinearGradient } from "expo-linear-gradient";
+import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 type Role = "driver" | "rider";
 type SelectedLocation =
-  | { source: "gps"; lat: string; lng: string }
-  | { source: "manual"; location: string }
-  | { source: "map"; lat: string; lng: string };
+  | { source: "map"; lat: string; lng: string; label?: string }
+  | { source: "place"; lat: string; lng: string; label: string };
 
 export default function LocationScreen() {
-  const [manual, setManual] = useState("");
   const [role, setRole] = useState<Role | null>(null);
   const [selected, setSelected] = useState<SelectedLocation | null>(null);
   const [areaText, setAreaText] = useState<string | null>(null);
@@ -28,11 +20,19 @@ export default function LocationScreen() {
     source?: string;
     lat?: string;
     lng?: string;
+    label?: string;
     mapImage?: string;
     role?: string;
   }>();
 
   const isRoleLocked = params.role === "driver" || params.role === "rider";
+  const mapImageValue = Array.isArray(params.mapImage) ? params.mapImage[0] : params.mapImage;
+  const mapImageUri =
+    typeof mapImageValue === "string" && mapImageValue.length > 0
+      ? mapImageValue.startsWith("file://") || mapImageValue.startsWith("http")
+        ? mapImageValue
+        : `file://${mapImageValue}`
+      : null;
 
   useEffect(() => {
     if (params.role === "driver" || params.role === "rider") {
@@ -41,53 +41,63 @@ export default function LocationScreen() {
   }, [params.role]);
 
   useEffect(() => {
-    if (params.source !== "map" || !params.lat || !params.lng) return;
+    const source = Array.isArray(params.source) ? params.source[0] : params.source;
+    const lat = Array.isArray(params.lat) ? params.lat[0] : params.lat;
+    const lng = Array.isArray(params.lng) ? params.lng[0] : params.lng;
+    const label = Array.isArray(params.label) ? params.label[0] : params.label;
 
-    setSelected({
-      source: "map",
-      lat: params.lat,
-      lng: params.lng,
-    });
+    if ((source !== "map" && source !== "place") || !lat || !lng) return;
 
-    (async () => {
-      const result = await Location.reverseGeocodeAsync({
-        latitude: Number(params.lat),
-        longitude: Number(params.lng),
+    if (source === "place" && label) {
+      setSelected({
+        source: "place",
+        lat,
+        lng,
+        label,
       });
-
-      if (result.length > 0) {
-        const addr = result[0];
-        const city = addr.city ?? "Улаанбаатар";
-        const district = addr.district ?? "";
-        const sub = addr.subregion ?? "";
-        setAreaText(`${city} ${district} дүүрэг, ${sub}`);
-      }
-    })();
-  }, [params.source, params.lat, params.lng]);
-
-  function useManual() {
-    if (!manual.trim()) {
-      Alert.alert("Байршил оруулна уу");
+      setAreaText(label);
       return;
     }
 
     setSelected({
-      source: "manual",
-      location: manual.trim(),
+      source: "map",
+      lat,
+      lng,
+      ...(label ? { label } : {}),
     });
-  }
+
+    if (label) {
+      setAreaText(label);
+      return;
+    }
+
+    (async () => {
+      const result = await Location.reverseGeocodeAsync({
+        latitude: Number(lat),
+        longitude: Number(lng),
+      });
+
+      if (result.length > 0) {
+        const address = result[0];
+        const city = address.city ?? "Улаанбаатар";
+        const district = address.district ?? "";
+        const subregion = address.subregion ?? "";
+        setAreaText(`${city} ${district} дүүрэг, ${subregion}`.trim());
+      }
+    })();
+  }, [params.label, params.lat, params.lng, params.source]);
 
   async function ensureDriverRole() {
     try {
       const me = await apiFetch("/users/me");
       if (me?.role === "driver") return true;
 
-      const res = await apiFetch("/auth/role", {
+      const response = await apiFetch("/auth/role", {
         method: "POST",
         body: JSON.stringify({ role: "driver" }),
       });
 
-      return !!res?.success || res?.role === "driver";
+      return !!response?.success || response?.role === "driver";
     } catch {
       return false;
     }
@@ -105,11 +115,6 @@ export default function LocationScreen() {
     }
 
     if (role === "driver") {
-      if (selected.source !== "gps" && selected.source !== "map") {
-        Alert.alert("Жолооч горим", "Жолооч бол GPS эсвэл map байршил сонгоно уу");
-        return;
-      }
-
       const ok = await ensureDriverRole();
       if (!ok) {
         Alert.alert("Алдаа", "Жолоочийн эрх идэвхжүүлж чадсангүй. Дахин оролдоно уу.");
@@ -121,21 +126,12 @@ export default function LocationScreen() {
         params: {
           startLat: selected.lat,
           startLng: selected.lng,
+          ...(selected.source === "place"
+            ? { startLabel: selected.label }
+            : areaText
+              ? { startLabel: areaText }
+              : {}),
           role,
-        },
-      });
-      return;
-    }
-
-    if (selected.source === "gps" || selected.source === "map") {
-      router.replace({
-        pathname: "/rides",
-        params: {
-          role,
-          source: selected.source,
-          lat: selected.lat,
-          lng: selected.lng,
-          location: areaText ?? "",
         },
       });
       return;
@@ -145,220 +141,263 @@ export default function LocationScreen() {
       pathname: "/rides",
       params: {
         role,
-        source: "manual",
-        location: selected.location,
+        source: selected.source,
+        lat: selected.lat,
+        lng: selected.lng,
+        location: selected.source === "place" ? selected.label : areaText ?? "",
       },
     });
   }
 
+  function openMap() {
+    if (!role) {
+      Alert.alert("Эхлээд үүргээ сонгоно уу", "Жолооч эсвэл зорчигчоо сонгоно уу");
+      return;
+    }
+
+    router.push({
+      pathname: "/location/map",
+      params: {
+        role,
+      },
+    });
+  }
+
+  const selectionTitle = useMemo(() => {
+    if (!selected) return "Эхлэх байршлаа сонго";
+    if (selected.source === "map") return "Map дээрээс сонгосон байршил";
+    return "Газрын нэрээр сонгосон байршил";
+  }, [selected]);
+
+  const selectionBody = useMemo(() => {
+    if (!selected) {
+      return "Үүргээ сонгоод газрын зураг руу орж, эхлэх байршлаа нэрээр хайх эсвэл шууд map дээр сонгоно.";
+    }
+
+    if (selected.source === "place") {
+      return selected.label;
+    }
+
+    if (selected.label) return selected.label;
+    if (areaText) return areaText;
+    return "Координат хадгалагдсан. Дараагийн алхам руу үргэлжлүүлж болно.";
+  }, [areaText, selected]);
+
+  function resetSelection() {
+    setSelected(null);
+    setAreaText(null);
+  }
+
   return (
-    <View style={styles.container}>
-      {params.mapImage ? (
-        <Image source={{ uri: params.mapImage }} style={styles.locationImage} resizeMode="cover" />
-      ) : (
-        <Image
-          source={require("../../assets/images/location1.png")}
-          style={styles.locationImage}
-          resizeMode="contain"
-        />
-      )}
-
-      {selected && selected.source !== "manual" && (
-        <Text style={{ textAlign: "center", marginBottom: 8 }}>📍 Таны байршил</Text>
-      )}
-
-      {areaText && (
-        <Text style={{ textAlign: "center", color: "#6B7280", marginBottom: 12 }}>{areaText}</Text>
-      )}
-
-      {!selected && (
-        <>
-          <Text style={styles.title}>📍 Та хаанаас явах вэ?</Text>
-          <Text style={styles.hint}>Та хаанаас хөдөлөх вэ, явж эхлэх байршлаа сонгоно уу</Text>
-        </>
-      )}
-
-      {isRoleLocked ? (
-        <View style={styles.roleRow}>
-          <View style={[styles.roleBtn, styles.roleActive]}>
-            <Text style={styles.roleText}>{role === "driver" ? "Жолооч" : "Зорчигч"}</Text>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.roleRow}>
-          <TouchableOpacity
-            style={[styles.roleBtn, role === "driver" && styles.roleActive]}
-            onPress={() => setRole("driver")}
-          >
-            <Text style={styles.roleText}>Жолооч</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.roleBtn, role === "rider" && styles.roleActive]}
-            onPress={() => setRole("rider")}
-          >
-            <Text style={styles.roleText}>Зорчигч</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {selected && (
-        <View style={styles.selectedInfo}>
-          <Text style={styles.selectedText}>
-            {selected.source === "gps" && "📡 GPS ашигласан"}
-            {selected.source === "manual" && `✍️ ${selected.location}`}
-            {selected.source === "map" && "🗺 Газрын зургаас сонгосон"}
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <LinearGradient
+        colors={[AppTheme.colors.accentDeep, AppTheme.colors.accent]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <View style={styles.heroTextWrap}>
+          <Text style={styles.heroEyebrow}>Start Point</Text>
+          <Text style={styles.heroTitle}>Эхлэх байршлаа газрын зургаар сонго</Text>
+          <Text style={styles.heroBody}>
+            Энэ дэлгэц дээр зөвхөн үүргээ сонгоод map руу орно. Нэрээр хайх, marker тавих, байршил
+            батлах бүх үйлдэл map дээрээ хийгдэнэ.
           </Text>
         </View>
-      )}
 
-      {!selected && (
-        <>
-          <Text style={styles.label}>✍️ Өөр газраас явах байршил</Text>
+        <Image
+          source={mapImageUri ? { uri: mapImageUri } : require("../../assets/images/location1.png")}
+          style={styles.heroImage}
+          resizeMode={mapImageUri ? "cover" : "contain"}
+        />
+      </LinearGradient>
 
-          <TextInput
-            placeholder="Жишээ: Яармагийн эцэс"
-            value={manual}
-            onChangeText={setManual}
-            onSubmitEditing={useManual}
-            style={styles.input}
-          />
-        </>
-      )}
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Явах хэлбэрээ сонго</Text>
+        <Text style={styles.sectionBody}>
+          {isRoleLocked
+            ? "Энэ урсгалын үүрэг өмнөх алхмаас түгжигдсэн байна."
+            : "Жолооч эсвэл зорчигчийн урсгалын алинаар үргэлжлэхээ сонгоорой."}
+        </Text>
 
-      {!selected && (
-        <TouchableOpacity
-          onPress={() =>
-            router.push({
-              pathname: "/location/map",
-              params: {
-                ...(role ? { role } : {}),
-              },
-            })
-          }
-          style={styles.mapBtn}
-        >
-          <Text style={styles.mapText}>🗺 Газрын зургаас сонгох</Text>
-        </TouchableOpacity>
-      )}
+        <View style={styles.roleRow}>
+          <TouchableOpacity
+            activeOpacity={0.92}
+            disabled={isRoleLocked}
+            style={[
+              styles.roleButton,
+              role === "driver" && styles.roleButtonActive,
+              isRoleLocked && role !== "driver" && styles.roleButtonDisabled,
+            ]}
+            onPress={() => setRole("driver")}
+          >
+            <Text style={[styles.roleLabel, role === "driver" && styles.roleLabelActive]}>Жолооч</Text>
+            <Text style={[styles.roleCaption, role === "driver" && styles.roleCaptionActive]}>
+              Маршрут үүсгэж, суудал санал болгоно
+            </Text>
+          </TouchableOpacity>
 
-      <View style={styles.bottomWrap}>
-        <TouchableOpacity
-          style={[styles.button, (!selected || !role) && { opacity: 0.5 }]}
-          disabled={!selected || !role}
-          onPress={goHome}
-        >
-          <Text style={styles.buttonText}>Үргэлжлүүлэх</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.92}
+            disabled={isRoleLocked}
+            style={[
+              styles.roleButton,
+              role === "rider" && styles.roleButtonActive,
+              isRoleLocked && role !== "rider" && styles.roleButtonDisabled,
+            ]}
+            onPress={() => setRole("rider")}
+          >
+            <Text style={[styles.roleLabel, role === "rider" && styles.roleLabelActive]}>Зорчигч</Text>
+            <Text style={[styles.roleCaption, role === "rider" && styles.roleCaptionActive]}>
+              Өөрт тохирох аялал хайж захиална
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+
+      <View style={styles.selectionCard}>
+        <Text style={styles.selectionEyebrow}>Сонгогдсон төлөв</Text>
+        <Text style={styles.selectionTitle}>{selectionTitle}</Text>
+        <Text style={styles.selectionBody}>{selectionBody}</Text>
+
+        {selected ? (
+          <TouchableOpacity activeOpacity={0.9} style={styles.selectionReset} onPress={resetSelection}>
+            <Text style={styles.selectionResetText}>Сонголтоо шинэчлэх</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <TouchableOpacity
+        activeOpacity={0.92}
+        style={[styles.primaryButton, !role && styles.primaryButtonDisabled]}
+        disabled={!role}
+        onPress={selected ? goHome : openMap}
+      >
+        <Text style={styles.primaryButtonText}>
+          {selected ? "Үргэлжлүүлэх" : "Газрын зураг руу орох"}
+        </Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F6F8F7",
-    padding: 24,
-  },
-
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 6,
-  },
-
-  hint: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 20,
-  },
-
-  roleRow: {
-    flexDirection: "row",
-    gap: 10,
+  container: { flex: 1, backgroundColor: AppTheme.colors.canvas },
+  content: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 40 },
+  heroCard: {
+    borderRadius: AppTheme.radius.lg,
+    padding: 20,
     marginBottom: 16,
+    overflow: "hidden",
+    ...AppTheme.shadow.floating,
   },
-
-  roleBtn: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
+  heroTextWrap: { maxWidth: 270 },
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    fontFamily: AppFontFamily,
   },
-
-  roleActive: {
-    borderColor: "#4CAF8C",
-    backgroundColor: "#E8F5F1",
-  },
-
-  roleText: {
+  heroTitle: {
+    color: AppTheme.colors.white,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: "700",
-    color: "#1F2937",
+    fontFamily: AppFontFamily,
   },
-
-  selectedInfo: {
-    backgroundColor: "#E8F5F1",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-
-  selectedText: {
+  heroBody: {
+    color: "rgba(255,255,255,0.84)",
     fontSize: 14,
-    color: "#065F46",
+    lineHeight: 22,
+    marginTop: 10,
   },
-
-  label: {
-    fontWeight: "600",
+  heroImage: {
+    width: "100%",
+    height: 184,
+    borderRadius: AppTheme.radius.md,
+    marginTop: 18,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  sectionCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: AppTheme.radius.lg,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    ...AppTheme.shadow.card,
+  },
+  sectionTitle: {
+    color: AppTheme.colors.text,
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "700",
+    fontFamily: AppFontFamily,
+  },
+  sectionBody: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 8,
+  },
+  roleRow: { marginTop: 16 },
+  roleButton: {
+    borderRadius: AppTheme.radius.md,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    backgroundColor: AppTheme.colors.cardSoft,
+    padding: 16,
+    marginBottom: 10,
+  },
+  roleButtonActive: { backgroundColor: AppTheme.colors.accent, borderColor: AppTheme.colors.accent },
+  roleButtonDisabled: { opacity: 0.56 },
+  roleLabel: { color: AppTheme.colors.text, fontSize: 17, fontWeight: "700" },
+  roleLabelActive: { color: AppTheme.colors.white },
+  roleCaption: { color: AppTheme.colors.textMuted, fontSize: 13, lineHeight: 19, marginTop: 4 },
+  roleCaptionActive: { color: "rgba(255,255,255,0.8)" },
+  selectionCard: {
+    backgroundColor: AppTheme.colors.cardSoft,
+    borderRadius: AppTheme.radius.lg,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(47,107,83,0.12)",
+  },
+  selectionEyebrow: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
     marginBottom: 8,
   },
-
-  input: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    marginBottom: 20,
-  },
-
-  button: {
-    backgroundColor: "#4CAF8C",
-    padding: 16,
-    borderRadius: 28,
-    alignItems: "center",
-  },
-
-  bottomWrap: {
-    marginTop: "auto",
-    paddingTop: 12,
-  },
-
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
+  selectionTitle: {
+    color: AppTheme.colors.text,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "700",
+    fontFamily: AppFontFamily,
   },
-
-  mapBtn: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#ECFEFF",
+  selectionBody: { color: AppTheme.colors.textMuted, fontSize: 14, lineHeight: 22, marginTop: 8 },
+  selectionReset: {
+    alignSelf: "flex-start",
+    marginTop: 14,
+    backgroundColor: AppTheme.colors.white,
+    borderRadius: AppTheme.radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-
-  mapText: {
-    fontSize: 16,
-    textAlign: "center",
+  selectionResetText: { color: AppTheme.colors.accentDeep, fontSize: 12, fontWeight: "700" },
+  primaryButton: {
+    minHeight: 58,
+    borderRadius: AppTheme.radius.pill,
+    backgroundColor: AppTheme.colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+    ...AppTheme.shadow.floating,
   },
-
-  locationImage: {
-    width: "100%",
-    height: 220,
-    marginBottom: 12,
-  },
+  primaryButtonDisabled: { opacity: 0.55 },
+  primaryButtonText: { color: AppTheme.colors.white, fontSize: 16, fontWeight: "700" },
 });

@@ -76,7 +76,7 @@ export default function Slide4({ active }: Props) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [active]);
+  }, [active, bottomFade, bulletsFade, descFade, dotsFade, highlightFade, imageFade, titleFade]);
 
   return (
     <ScrollView

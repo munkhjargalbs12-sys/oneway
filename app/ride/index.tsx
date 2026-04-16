@@ -1,18 +1,5 @@
-import { StyleSheet, Text, View, } from "react-native";
+import { Redirect } from "expo-router";
 
 export default function RideIndex() {
-  return (
-    <View style={styles.test}>
-      <Text>RTest</Text>
-    </View>
-  );
+  return <Redirect href="/(tabs)/rides" />;
 }
-const styles = StyleSheet.create({
-  test: {
-    flex: 1,
-    backgroundColor: "#5f3838",
-    paddingHorizontal: 12,
-    
-  },
-}
-)

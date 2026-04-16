@@ -5,12 +5,20 @@ node_modules/
 
 # Expo
 .expo/
+.expo-export-check/
+.android-user/
+.android-user*/
+.gradle-user/
+.gradle-user*/
 dist/
 web-build/
 expo-env.d.ts
+coverage/
 
 # Native
 .kotlin/
+android/app/build/
+ios/build/
 *.orig.*
 *.jks
 *.p8
@@ -22,6 +30,12 @@ expo-env.d.ts
 .metro-health-check*
 
 # debug
+*.log
+*.tmp
+*.temp
+logs/
+tmp/
+temp/
 npm-debug.*
 yarn-debug.*
 yarn-error.*

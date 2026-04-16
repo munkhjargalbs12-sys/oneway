@@ -2,7 +2,7 @@
   "expo": {
     "name": "one-way",
     "slug": "one-way",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "oneway",
@@ -15,6 +15,14 @@
       }
     },
     "android": {
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
@@ -30,6 +38,16 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Таныг уулзах цэгт цагтаа очсоныг шалгахын тулд байршлыг ашиглана.",
+          "locationAlwaysAndWhenInUsePermission": "Таныг уулзах цэг дээр цагтаа ирснийг баталгаажуулахын тулд байршлыг background үед ч ашиглана.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -49,7 +67,11 @@
       "reactCompiler": true
     },
     "extra": {
-      "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBSa7WHXTTBm6ykCkyw4xt_VV5zAz2VcNc"
+      "apiUrl": "https://api.oneway.mn",
+      "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyBSa7WHXTTBm6ykCkyw4xt_VV5zAz2VcNc",
+      "eas": {
+        "projectId": "498476a2-7951-4e42-8fc6-34e4e45580fb"
+      }
     }
   }
 }

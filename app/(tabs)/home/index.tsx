@@ -1,23 +1,42 @@
-﻿import { apiFetch } from "@/services/apiClient";
-import { getToken } from "@/services/authStorage";
+import AppIconBadge from "@/components/AppIconBadge";
+import DriverRequestPopup from "@/components/DriverRequestPopup";
+import IllustratedEmptyState from "@/components/IllustratedEmptyState";
+import { AppTheme } from "@/constants/theme";
+import { apiFetch } from "@/services/apiClient";
+import { getToken, getUser } from "@/services/authStorage";
+import {
+  extractBookedRideIds,
+  extractBookingStatusByRide,
+  extractBookingStatusLabelByRide,
+  getBookingStatusColor,
+  getBookingStatusLabel,
+} from "@/services/bookingStatus";
+import { syncRideReminderNotifications } from "@/services/rideReminders";
+import {
+  canReviewDriverRequestNotification,
+  countUnreadNotifications,
+  getNotificationBookingId,
+  getNotificationRequesterName,
+  sortNotificationsNewestFirst,
+} from "@/services/notificationUtils";
+import { playActionSuccessSound } from "@/services/notificationSound";
+import { shouldShowRideOnHome } from "@/services/rideTiming";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-
-function extractBookedRideIds(payload: any): number[] {
-  const raw =
-    (Array.isArray(payload?.ride_ids) && payload.ride_ids) ||
-    (Array.isArray(payload?.bookings) && payload.bookings) ||
-    (Array.isArray(payload?.items) && payload.items) ||
-    (Array.isArray(payload) && payload) ||
-    [];
-
-  const ids = raw
-    .map((entry: any) => Number(entry?.ride_id ?? entry?.ride?.id ?? entry?.id ?? entry))
-    .filter((id: number) => Number.isFinite(id));
-
-  return Array.from(new Set(ids));
-}
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  Easing,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
 function extractRideList(payload: any): any[] {
   if (Array.isArray(payload)) return payload;
@@ -28,20 +47,92 @@ function extractRideList(payload: any): any[] {
   return [];
 }
 
+function getSettledValue<T>(
+  result: PromiseSettledResult<T>,
+  fallback: T,
+  label: string
+) {
+  if (result.status === "fulfilled") {
+    return result.value;
+  }
+
+  console.log(`${label} load error`, result.reason);
+  return fallback;
+}
+
+type DriverDecisionAction = "approve" | "reject" | null;
+
 function HomeScreen() {
   const [user, setUser] = useState<any>(null);
   const [activeRide, setActiveRide] = useState<any>(null);
   const [bookedRides, setBookedRides] = useState<any[]>([]);
+  const [bookingStatusByRide, setBookingStatusByRide] = useState<Record<number, string>>({});
+  const [bookingStatusLabelByRide, setBookingStatusLabelByRide] = useState<Record<number, string>>({});
   const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [driverDecisionLoading, setDriverDecisionLoading] = useState<DriverDecisionAction>(null);
   const [activeTrustTip, setActiveTrustTip] = useState<number | null>(null);
   const [activeShieldTip, setActiveShieldTip] = useState(false);
+  const trustTipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sectionAnimations = useRef([
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+    new Animated.Value(0),
+  ]).current;
+  const walletFloat = useRef(new Animated.Value(0)).current;
+  const createPulse = useRef(new Animated.Value(0)).current;
+  const walletFloatLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const createPulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const params = useLocalSearchParams<{
   startLat?: string;
   startLng?: string;
+  startLabel?: string;
 }>();
 
 const startLat = params.startLat;
 const startLng = params.startLng;
+const startLabel = params.startLabel;
+
+  const getRevealStyle = useCallback((value: Animated.Value, distance = 30) => ({
+    opacity: value,
+    transform: [
+      {
+        translateY: value.interpolate({
+          inputRange: [0, 1],
+          outputRange: [distance, 0],
+        }),
+      },
+      {
+        scale: value.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.97, 1],
+        }),
+      },
+    ],
+  }), []);
+
+  const walletFloatStyle = {
+    transform: [
+      {
+        translateY: walletFloat.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -5],
+        }),
+      },
+    ],
+  };
+
+  const createPulseStyle = {
+    transform: [
+      {
+        scale: createPulse.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 1.025],
+        }),
+      },
+    ],
+  };
 
   const trustLevel = Math.max(
     1,
@@ -49,18 +140,105 @@ const startLng = params.startLng;
   );
   const shouldShowShieldPopup = trustLevel < 4;
 
-  const shieldHintText = "Итгэлцэл хүлээсэн жолооч буюу 4 одтой жолооч дээр идэвхжинэ.";
+  const shieldHintText = "Итгэлцэл хүлээсэн жолооч буюу жолоочийн эрх, тээврийн хэрэгслээ баталгаажуулсан 4 одтой жолооч дээр идэвхжинэ.";
 
   const onPressShield = () => {
     if (!shouldShowShieldPopup) return;
     setActiveShieldTip((prev) => !prev);
   };
 
+  const closeTrustTip = useCallback(() => {
+    if (trustTipTimerRef.current) {
+      clearTimeout(trustTipTimerRef.current);
+      trustTipTimerRef.current = null;
+    }
+    setActiveTrustTip(null);
+  }, []);
+
+  const openTrustTip = useCallback((level: number) => {
+    if (trustTipTimerRef.current) {
+      clearTimeout(trustTipTimerRef.current);
+    }
+
+    setActiveShieldTip(false);
+    setActiveTrustTip(level);
+
+    trustTipTimerRef.current = setTimeout(() => {
+      setActiveTrustTip(null);
+      trustTipTimerRef.current = null;
+    }, 10000);
+  }, []);
+
+  const applyNotifications = useCallback((list: any[]) => {
+    const next = sortNotificationsNewestFirst(Array.isArray(list) ? list : []);
+    setNotifications(next);
+    setUnreadCount(countUnreadNotifications(next));
+  }, []);
+
+  const loadNotificationsOnly = useCallback(async () => {
+    const token = await getToken();
+    if (!token) {
+      applyNotifications([]);
+      return;
+    }
+
+    try {
+      const data = await apiFetch("/notifications").catch(() => []);
+      applyNotifications(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.log("Home notifications load error", err);
+    }
+  }, [applyNotifications]);
+
+  const stopWidgetAnimations = useCallback(() => {
+    walletFloatLoopRef.current?.stop();
+    createPulseLoopRef.current?.stop();
+    walletFloat.stopAnimation();
+    createPulse.stopAnimation();
+  }, [createPulse, walletFloat]);
+
+  const startWidgetAnimations = useCallback(() => {
+    sectionAnimations.forEach((value) => value.setValue(0));
+    stopWidgetAnimations();
+
+    Animated.stagger(
+      90,
+      sectionAnimations.map((value, index) =>
+        Animated.timing(value, {
+          toValue: 1,
+          duration: 520 + index * 40,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        })
+      )
+    ).start();
+
+    walletFloat.setValue(0);
+    walletFloatLoopRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(walletFloat, {
+          toValue: 1,
+          duration: 2200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(walletFloat, {
+          toValue: 0,
+          duration: 2200,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    walletFloatLoopRef.current.start();
+
+  }, [sectionAnimations, stopWidgetAnimations, walletFloat]);
+
   const trustLevelHints = [
     { stars: 1, title: "⭐ 1 од", text: "Шинээр бүртгүүлсэн хэрэглэгч." },
     { stars: 2, title: "⭐⭐ 2 од", text: "И-мэйл болон утас баталгаажуулсан." },
     { stars: 3, title: "⭐⭐⭐ 3 од", text: "Төлбөрийн данс баталгаажуулсан." },
-    { stars: 4, title: "⭐⭐⭐⭐ 4 од", text: "Жолооч гэдгээ баталгаажуулсан." },
+    { stars: 4, title: "⭐⭐⭐⭐ 4 од", text: "Жолоочийн эрх болон тээврийн хэрэгслээ баталгаажуулсан." },
     { stars: 5, title: "⭐⭐⭐⭐⭐ 5 од", text: "One Way-оос баталгаажуулсан." },
   ];
 
@@ -70,27 +248,75 @@ const startLng = params.startLng;
         setUser(null);
         setActiveRide(null);
         setBookedRides([]);
-        setUnreadCount(0);
+        setBookingStatusByRide({});
+        setBookingStatusLabelByRide({});
+        applyNotifications([]);
         return;
       }
 
+      const cachedUser = await getUser().catch(() => null);
+      if (cachedUser) {
+        setUser(cachedUser);
+      }
+
       try {
-        const [userData, rideData, myBookings, allRidesRaw, myRidesRaw, notifications] = await Promise.all([
-          apiFetch("/users/me"),
-          apiFetch("/rides/active"),
-          apiFetch("/bookings/mine").catch(() => ({ ride_ids: [] })),
-          apiFetch("/rides").catch(() => []),
-          apiFetch("/rides/mine").catch(() => []),
-          apiFetch("/notifications").catch(() => []),
-        ]);
+        const userData = await apiFetch("/users/me");
         setUser(userData);
+
+        const [
+          rideDataResult,
+          myBookingsResult,
+          allRidesResult,
+          myRidesResult,
+          notificationsResult,
+        ] = await Promise.allSettled([
+          apiFetch("/rides/active"),
+          apiFetch("/bookings/mine"),
+          apiFetch("/rides"),
+          apiFetch("/rides/mine"),
+          apiFetch("/notifications"),
+        ]);
+
+        const rideData = getSettledValue(rideDataResult, null, "Active ride");
+        const myBookings = getSettledValue(
+          myBookingsResult,
+          { ride_ids: [] },
+          "My bookings"
+        );
+        const allRidesRaw = getSettledValue(allRidesResult, [], "Ride list");
+        const myRidesRaw = getSettledValue(myRidesResult, [], "My rides");
+        const notifications = getSettledValue(
+          notificationsResult,
+          [],
+          "Notifications"
+        );
         const allRides = extractRideList(allRidesRaw);
         const myRides = extractRideList(myRidesRaw);
+        const mineList = Array.isArray(myRides) ? myRides : [];
 
         const bookedIds = extractBookedRideIds(myBookings);
+        const nextBookingStatusByRide = extractBookingStatusByRide(myBookings);
+        const nextBookingStatusLabelByRide = extractBookingStatusLabelByRide(myBookings);
+        setBookingStatusByRide(nextBookingStatusByRide);
+        setBookingStatusLabelByRide(nextBookingStatusLabelByRide);
+
+        const now = new Date();
 
         const matched = Array.isArray(allRides)
-          ? allRides.filter((r: any) => bookedIds.includes(Number(r?.id)))
+          ? allRides
+              .filter((r: any) => bookedIds.includes(Number(r?.id)))
+              .filter((ride: any) => shouldShowRideOnHome(ride, now))
+              .map((ride: any) => {
+                const rideId = Number(ride?.id);
+                const bookingStatus = nextBookingStatusByRide[rideId];
+
+                return {
+                  ...ride,
+                  booking_status: bookingStatus,
+                  booking_status_label:
+                    nextBookingStatusLabelByRide[rideId] || getBookingStatusLabel(bookingStatus),
+                };
+              })
           : [];
 
         setBookedRides(matched);
@@ -100,17 +326,11 @@ const startLng = params.startLng;
             ? allRides.find((r: any) => Number(r?.id) === Number(rideData.id)) || rideData
             : rideData;
 
-        const hiddenStatuses = new Set(["completed", "cancelled", "canceled"]);
         const pickLatestRide = (list: any[]) =>
           list
-            .filter((r: any) => {
-              const s = String(r?.status || "").toLowerCase();
-              // Keep rides unless explicitly finished/cancelled.
-              return !s || !hiddenStatuses.has(s);
-            })
+            .filter((ride: any) => shouldShowRideOnHome(ride, now))
             .sort((a: any, b: any) => Number(b?.id || 0) - Number(a?.id || 0))[0] || null;
 
-        const mineList = Array.isArray(myRides) ? myRides : [];
         const mineFallback =
           mineList.length > 0
             ? pickLatestRide(mineList)
@@ -126,16 +346,22 @@ const startLng = params.startLng;
                 }))
               : null;
 
-        setActiveRide(enrichedActiveRide?.id ? enrichedActiveRide : mineFallback);
+        const nextActiveRide = shouldShowRideOnHome(enrichedActiveRide, now)
+          ? enrichedActiveRide
+          : null;
 
-        const unread = Array.isArray(notifications)
-          ? notifications.filter((n: any) => !n?.is_read).length
-          : 0;
-        setUnreadCount(unread);
+        setActiveRide(nextActiveRide?.id ? nextActiveRide : mineFallback);
+
+        applyNotifications(Array.isArray(notifications) ? notifications : []);
+        void syncRideReminderNotifications({
+          allRides,
+          myRides: mineList,
+          bookings: myBookings,
+        });
       } catch (err) {
         console.log("Home load error", err);
       }
-    }, []);
+    }, [applyNotifications]);
 
   useEffect(() => {
     loadHome();
@@ -143,9 +369,28 @@ const startLng = params.startLng;
 
   useFocusEffect(
     useCallback(() => {
-      loadHome();
-    }, [loadHome])
+      void loadHome();
+      startWidgetAnimations();
+
+      const timer = setInterval(() => {
+        void loadNotificationsOnly();
+      }, 8000);
+
+      return () => {
+        clearInterval(timer);
+        stopWidgetAnimations();
+      };
+    }, [loadHome, loadNotificationsOnly, startWidgetAnimations, stopWidgetAnimations])
   );
+
+  useEffect(() => {
+    return () => {
+      if (trustTipTimerRef.current) {
+        clearTimeout(trustTipTimerRef.current);
+      }
+      stopWidgetAnimations();
+    };
+  }, [stopWidgetAnimations]);
 
   const getAvatarSource = () => {
     if (!user?.avatar_id) return icons.profile;
@@ -184,16 +429,539 @@ const startLng = params.startLng;
     return Math.min(avail, 4);
   };
 
+  const activeDriverRequest =
+    user?.role === "driver"
+      ? notifications.find((item: any) => canReviewDriverRequestNotification(item)) || null
+      : null;
+
+  const handleDriverDecision = useCallback(
+    async (item: any, action: "approve" | "reject") => {
+      const bookingId = getNotificationBookingId(item);
+      const notificationId = Number(item?.id);
+
+      if (!bookingId || !Number.isFinite(notificationId)) {
+        Alert.alert("Алдаа", "Захиалгын мэдээлэл дутуу байна.");
+        return;
+      }
+
+      try {
+        setDriverDecisionLoading(action);
+        await apiFetch(`/bookings/${bookingId}/${action}`, { method: "PATCH" });
+        await apiFetch(`/notifications/${notificationId}/read`, { method: "PATCH" }).catch(() => null);
+
+        setNotifications((prev) => {
+          const next = prev.map((entry: any) =>
+            Number(entry?.id) === notificationId
+              ? {
+                  ...entry,
+                  is_read: true,
+                  booking_status: action === "approve" ? "approved" : "rejected",
+                }
+              : entry
+          );
+          setUnreadCount(countUnreadNotifications(next));
+          return next;
+        });
+
+        void playActionSuccessSound();
+        void loadHome();
+      } catch (err: any) {
+        Alert.alert("Алдаа", err?.message || "Үйлдэл амжилтгүй боллоо.");
+      } finally {
+        setDriverDecisionLoading(null);
+      }
+    },
+    [loadHome]
+  );
+
+  const selectedPickupReady = Boolean(startLat && startLng);
+  const heroSubtitle =
+    user?.role === "driver"
+      ? "Зам, захиалга, баталгаажуулалтаа нэг дороос хянаарай."
+      : "Дараагийн унаагаа хурдан олоод, захиалгаа хялбар удирдаарай.";
+
+  useEffect(() => {
+    createPulseLoopRef.current?.stop();
+    createPulse.stopAnimation();
+    createPulse.setValue(0);
+
+    if (!selectedPickupReady) {
+      return;
+    }
+
+    createPulseLoopRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(createPulse, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(createPulse, {
+          toValue: 0,
+          duration: 1500,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    createPulseLoopRef.current.start();
+
+    return () => {
+      createPulseLoopRef.current?.stop();
+    };
+  }, [createPulse, selectedPickupReady]);
+
+  const bookedRideList: any[] = Array.isArray(bookedRides) ? bookedRides : [];
+
+  if (Array.isArray(bookedRides)) {
+    return (
+      <View style={styles.safe}>
+        <DriverRequestPopup
+          visible={!!activeDriverRequest}
+          requesterName={getNotificationRequesterName(activeDriverRequest)}
+          title={activeDriverRequest?.title}
+          body={activeDriverRequest?.body}
+          busyAction={driverDecisionLoading}
+          onApprove={() =>
+            activeDriverRequest &&
+            handleDriverDecision(activeDriverRequest, "approve")
+          }
+          onReject={() =>
+            activeDriverRequest &&
+            handleDriverDecision(activeDriverRequest, "reject")
+          }
+        />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.container}>
+            <Animated.View style={getRevealStyle(sectionAnimations[0], 20)}>
+            <LinearGradient
+              colors={[
+                AppTheme.colors.accentDeep,
+                AppTheme.colors.accent,
+                "#72957f",
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.premiumHero}
+            >
+              <View style={styles.premiumHeroTopRow}>
+                <View style={styles.premiumHeroTitleWrap}>
+                  <Text style={styles.premiumHeroEyebrow}>Нүүр</Text>
+                  <Text style={styles.premiumGreetingText}>
+                    Сайн уу, {user?.name || "Хэрэглэгч"}
+                  </Text>
+                  {false && <Text style={styles.premiumHeroSubtext}>{heroSubtitle}</Text>}
+                </View>
+
+                <View style={styles.premiumHeroActionRow}>
+                  <TouchableOpacity
+                    style={styles.premiumTopIconButton}
+                    onPress={() => router.push("/history")}
+                  >
+                    <Image source={icons.time} style={styles.premiumTopIcon} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.premiumTopIconButton,
+                      styles.notificationWrap,
+                    ]}
+                    onPress={() => router.push("/notifications")}
+                  >
+                    <Image
+                      source={icons.notification}
+                      style={styles.premiumTopIcon}
+                    />
+                    {unreadCount > 0 && (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.premiumHeroBody}>
+                <View style={styles.premiumAvatarColumn}>
+                  <View style={styles.premiumProfileWrap}>
+                    <Image
+                      source={getAvatarSource()}
+                      style={styles.premiumAvatar}
+                    />
+                    <TouchableOpacity
+                      onPress={onPressShield}
+                      style={styles.premiumShieldBtn}
+                      activeOpacity={0.8}
+                    >
+                      <Image
+                        source={
+                          trustLevel >= 4 ? icons.shieldActive : icons.shield
+                        }
+                        style={styles.premiumShield}
+                      />
+                    </TouchableOpacity>
+                    {activeShieldTip && trustLevel < 4 && (
+                      <View style={styles.premiumShieldHintCard}>
+                        <Text style={styles.premiumShieldHintText}>
+                          {shieldHintText}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => setActiveShieldTip(false)}
+                        >
+                          <Text style={styles.premiumHintClose}>Хаах</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.premiumRatingRow}>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <TouchableOpacity key={i} onPress={() => openTrustTip(i)}>
+                        <Image
+                          source={icons.starHalf}
+                          style={[
+                            styles.premiumStar,
+                            {
+                              tintColor:
+                                i <= trustLevel
+                                  ? AppTheme.colors.gold
+                                  : "rgba(255,255,255,0.28)",
+                            },
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.premiumHeroSide}>
+                  <Animated.View style={walletFloatStyle}>
+                    <TouchableOpacity
+                      style={styles.premiumWalletCard}
+                      onPress={() => router.push("/wallet")}
+                      activeOpacity={0.88}
+                    >
+                      <Text style={styles.premiumWalletLabel}>OW Coin</Text>
+                      <View style={styles.premiumWalletValueRow}>
+                        <Image source={icons.coin} style={styles.premiumCoinIcon} />
+                        <Text style={styles.premiumWalletValue}>
+                          {user?.balance ?? 0}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </Animated.View>
+
+                  <View style={styles.premiumStatsRow}>
+                    <View style={styles.premiumMiniStatCard}>
+                      <Text style={styles.premiumMiniStatValue}>
+                        {bookedRideList.length}
+                      </Text>
+                      <Text style={styles.premiumMiniStatLabel}>Захиалга</Text>
+                    </View>
+                    <View style={styles.premiumMiniStatCard}>
+                      <Text style={styles.premiumMiniStatValue}>
+                        {unreadCount}
+                      </Text>
+                      <Text style={styles.premiumMiniStatLabel}>Мэдэгдэл</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.premiumPillRow}>
+                    <View style={styles.premiumInfoPill}>
+                      <Text style={styles.premiumInfoPillText}>
+                        Итгэл {trustLevel}/5
+                      </Text>
+                    </View>
+                    <View style={styles.premiumInfoPill}>
+                      <Text style={styles.premiumInfoPillText}>
+                        {activeRide ? "Идэвхтэй аялалтай" : "Аялал алга"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </LinearGradient>
+            </Animated.View>
+
+            {bookedRideList.length > 0 ? (
+              <Animated.View style={getRevealStyle(sectionAnimations[1], 28)}>
+              <View style={styles.premiumSectionCard}>
+                <Text style={styles.premiumSectionEyebrow}>Захиалгууд</Text>
+                <Text style={styles.premiumSectionTitle}>
+                  Таны сүүлийн захиалгууд
+                </Text>
+                <Text style={styles.premiumSectionText}>
+                  Баталгаажсан, хүлээгдэж буй, эсвэл татгалзсан төлөвөө эндээс
+                  шууд харна.
+                </Text>
+
+                <View style={styles.premiumBookedScrollCard}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.bookedScrollContent}
+                  >
+                    {bookedRideList.map((ride: any) => {
+                      const rideId = Number(ride?.id);
+                      const bookingStatus = String(
+                        ride?.booking_status || bookingStatusByRide[rideId] || ""
+                      ).toLowerCase();
+                      const bookingStatusLabel =
+                        ride?.booking_status_label ||
+                        bookingStatusLabelByRide[rideId] ||
+                        getBookingStatusLabel(bookingStatus);
+
+                      return (
+                        <TouchableOpacity
+                          key={String(ride.id)}
+                          style={styles.premiumBookedRideCard}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/ride/[id]",
+                              params: { id: String(ride.id), role: "rider" },
+                            })
+                          }
+                        >
+                          <Image
+                            source={getRideAvatarSource(ride.avatar_id)}
+                            style={styles.bookedAvatar}
+                          />
+
+                          <View style={styles.bookedInfo}>
+                            {getRideOwnerName(ride) ? (
+                              <Text style={styles.bookedName}>
+                                {getRideOwnerName(ride)}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.bookedDate}>
+                              Огноо: {ride.ride_date || "-"}
+                            </Text>
+                            <Text style={styles.bookedTime}>
+                              Цаг: {ride.start_time || "-"}
+                            </Text>
+                            <Text style={styles.bookedEnd} numberOfLines={1}>
+                              Очих газар:{" "}
+                              {ride.end_location || "Тодорхойгүй"}
+                            </Text>
+                            <Text style={styles.bookedPrice}>
+                              1 суудал: {ride.price ?? 0}₮
+                            </Text>
+                            <Text
+                              style={[
+                                styles.bookedBadge,
+                                { color: getBookingStatusColor(bookingStatus) },
+                              ]}
+                            >
+                              {bookingStatusLabel}
+                            </Text>
+                          </View>
+
+                          <Image
+                            source={
+                              seatImages[getAvailableSeats(ride)] || seatImages[1]
+                            }
+                            style={styles.bookedSeatImage}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+              </Animated.View>
+            ) : (
+              <Animated.View style={getRevealStyle(sectionAnimations[1], 28)}>
+              <View style={styles.premiumEmptyStateCard}>
+                <Text style={styles.premiumEmptyStateTitle}>
+                  Захиалга хараахан алга
+                </Text>
+                <Text style={styles.premiumEmptyStateText}>
+                  Та одоогоор чиглэлд захиалга өгөөгүй байна.
+                </Text>
+              </View>
+              </Animated.View>
+            )}
+
+            {activeRide ? (
+              <Animated.View style={getRevealStyle(sectionAnimations[2], 34)}>
+              <TouchableOpacity
+                style={styles.premiumActiveCard}
+                onPress={() => router.push(`/ride/${activeRide.id}`)}
+              >
+                <Text style={styles.premiumSectionEyebrow}>Идэвхтэй</Text>
+                <View style={styles.cardHeader}>
+                  <Image source={icons.ways} style={styles.cardIcon} />
+                  <Text style={styles.premiumSectionTitle}>
+                    Таны аялалын зам
+                  </Text>
+                </View>
+                <Text style={styles.premiumSectionText}>
+                  Одоо явж буй эсвэл хамгийн сүүлд үүсгэсэн маршрутаа нээж
+                  дэлгэрэнгүйг шалгана.
+                </Text>
+
+                <View style={styles.activeContentRow}>
+                  <View style={styles.activeInfo}>
+                    {getRideOwnerName(activeRide) ? (
+                      <Text style={styles.activeName}>
+                        {getRideOwnerName(activeRide)}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.activeDate}>
+                      Огноо: {activeRide.ride_date || "-"}
+                    </Text>
+                    <Text style={styles.activeTime}>
+                      Цаг: {activeRide.start_time || "-"}
+                    </Text>
+                    <Text style={styles.activeEnd} numberOfLines={2}>
+                      Очих газар:{" "}
+                      {activeRide.end_location ??
+                        activeRide.to_location ??
+                        "Тодорхойгүй"}
+                    </Text>
+                    <Text style={styles.activePrice}>
+                      1 суудал: {activeRide.price ?? 0}₮
+                    </Text>
+                  </View>
+
+                  <View style={styles.premiumSeatCard}>
+                    <Image
+                      source={
+                        seatImages[getAvailableSeats(activeRide)] || seatImages[1]
+                      }
+                      style={styles.activeSeatImage}
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              <Animated.View style={getRevealStyle(sectionAnimations[2], 34)}>
+              <View style={styles.premiumEmptyStateCard}>
+                <Text style={styles.premiumEmptyStateTitle}>
+                  Идэвхтэй аялал алга
+                </Text>
+                <Text style={styles.premiumEmptyStateText}>
+                  Шинэ чиглэл үүсгээд маршрутаа бэлдэж эхлээрэй.
+                </Text>
+              </View>
+              </Animated.View>
+            )}
+
+            <Animated.View style={getRevealStyle(sectionAnimations[3], 40)}>
+            <View style={styles.premiumSectionCard}>
+              <Text style={styles.premiumSectionEyebrow}>Чиглэл үүсгэх</Text>
+            
+              <Text style={styles.premiumSectionText}>
+                Эхлээд эхлэх цэгээ сонгоод, дараа нь очих байршлаа оруулбал зам
+                үүснэ.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.premiumPickupBtn}
+                onPress={() =>
+                  router.push({
+                    pathname: "/location/map",
+                    params: { returnTo: "home" },
+                  })
+                }
+              >
+                <Text style={styles.pickupText}>Эхлэх байршил сонгох</Text>
+                <Text style={styles.premiumPickupSubtext}>
+                  {selectedPickupReady
+                    ? startLabel
+                      ? `Сонгосон pickup: ${startLabel}`
+                      : "Байршил сонгогдсон. Одоо очих цэгээ үргэлжлүүлээрэй."
+                    : "Нэрээр хайж эсвэл map дээрээс pickup цэгээ сонгоно."}
+                </Text>
+              </TouchableOpacity>
+
+              <Animated.View style={createPulseStyle}>
+              <TouchableOpacity
+                style={[
+                  styles.premiumCreateBtn,
+                  !selectedPickupReady && styles.premiumCreateBtnDisabled,
+                ]}
+                onPress={() => {
+                  if (!startLat || !startLng) {
+                    alert("Эхлээд замын байршлаа сонгоно уу");
+                    return;
+                  }
+
+                  router.push({
+                    pathname: "/ride/create/map",
+                    params: {
+                      startLat,
+                      startLng,
+                      ...(startLabel ? { startLabel } : {}),
+                    },
+                  });
+                }}
+              >
+                <Text style={styles.createBtnText}>Очих байршлаа оруулах</Text>
+              </TouchableOpacity>
+              </Animated.View>
+            </View>
+            </Animated.View>
+          </View>
+        </ScrollView>
+        <Modal
+          transparent
+          visible={activeTrustTip !== null}
+          animationType="fade"
+          onRequestClose={closeTrustTip}
+        >
+          <Pressable style={styles.trustHintBackdrop} onPress={closeTrustTip}>
+            <Pressable style={styles.trustHintModalCard} onPress={() => {}}>
+              <Text style={styles.trustHintTitle}>
+                {trustLevelHints[(activeTrustTip ?? 1) - 1]?.title}
+              </Text>
+              <Text style={styles.trustHintText}>
+                {trustLevelHints[(activeTrustTip ?? 1) - 1]?.text}
+              </Text>
+              <TouchableOpacity onPress={closeTrustTip}>
+                <Text style={styles.trustHintClose}>Хаах</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.safe}>
+      <DriverRequestPopup
+        visible={!!activeDriverRequest}
+        requesterName={getNotificationRequesterName(activeDriverRequest)}
+        title={activeDriverRequest?.title}
+        body={activeDriverRequest?.body}
+        busyAction={driverDecisionLoading}
+        onApprove={() => activeDriverRequest && handleDriverDecision(activeDriverRequest, "approve")}
+        onReject={() => activeDriverRequest && handleDriverDecision(activeDriverRequest, "reject")}
+      />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.container}>
 
-        {/* HEADER */}
-        <View style={styles.headerRow}>
+        <LinearGradient
+          colors={[
+            AppTheme.colors.accentDeep,
+            AppTheme.colors.accent,
+            "#72957f",
+          ]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}
+        >
+          <View style={styles.headerRow}>
           <Text style={styles.greetingText}>Сайн уу, {user?.name}</Text>
           <View style={styles.iconTopRow}>
             <TouchableOpacity onPress={() => router.push("/history")}>
@@ -256,7 +1024,7 @@ const startLng = params.startLng;
         {/* RATING */}
         <View style={styles.ratingRow}>
               {[1, 2, 3, 4, 5].map((i) => (
-                <TouchableOpacity key={i} onPress={() => setActiveTrustTip(i)}>
+                <TouchableOpacity key={i} onPress={() => openTrustTip(i)}>
                   <Image
                     source={icons.starHalf}
                     style={[
@@ -270,20 +1038,10 @@ const startLng = params.startLng;
                 </TouchableOpacity>
           ))}
         </View>
-        {activeTrustTip && (
-          <View style={styles.trustHintCard}>
-            <Text style={styles.trustHintTitle}>{trustLevelHints[activeTrustTip - 1]?.title}</Text>
-            <Text style={styles.trustHintText}>{trustLevelHints[activeTrustTip - 1]?.text}</Text>
-            <TouchableOpacity onPress={() => setActiveTrustTip(null)}>
-              <Text style={styles.trustHintClose}>Хаах</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {bookedRides.length > 0 && (
+        {bookedRideList.length > 0 && (
           <View style={styles.bookedWrap}>
             <Text style={styles.bookedTitle}>
-              Таны сүүлийн захиалгууд ({bookedRides.length})
+              Таны сүүлийн захиалгууд ({bookedRideList.length})
             </Text>
             <View style={styles.bookedScrollCard}>
               <ScrollView
@@ -291,50 +1049,72 @@ const startLng = params.startLng;
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.bookedScrollContent}
               >
-            {bookedRides.map((ride) => (
-              <TouchableOpacity
-                key={String(ride.id)}
-                style={styles.bookedRideCard}
-                onPress={() =>
-                  router.push({
-                    pathname: "/ride/[id]",
-                    params: { id: String(ride.id), role: "rider" },
-                  })
-                }
-              >
-                <Image
-                  source={getRideAvatarSource(ride.avatar_id)}
-                  style={styles.bookedAvatar}
-                />
+            {bookedRideList.map((ride: any) => {
+              const rideId = Number(ride?.id);
+              const bookingStatus =
+                String(ride?.booking_status || bookingStatusByRide[rideId] || "").toLowerCase();
+              const bookingStatusLabel =
+                ride?.booking_status_label ||
+                bookingStatusLabelByRide[rideId] ||
+                getBookingStatusLabel(bookingStatus);
 
-                <View style={styles.bookedInfo}>
-                  {getRideOwnerName(ride) ? (
-                    <Text style={styles.bookedName}>{getRideOwnerName(ride)}</Text>
-                  ) : null}
-                  <Text style={styles.bookedDate}>Огноо: {ride.ride_date || "-"}</Text>
-                  <Text style={styles.bookedTime}>⏰ {ride.start_time || "-"}</Text>
-                  <Text style={styles.bookedEnd} numberOfLines={1}>
-                    📍 Очих газар: {ride.end_location || "Тодорхойгүй"}
-                  </Text>
-                  <Text style={styles.bookedPrice}>Суудал: {ride.price ?? 0}₮</Text>
-                  <Text style={styles.bookedBadge}>✔ Суудал захиалсан</Text>
-                  <Text style={styles.bookedPending}>⏳ Жолоочийн зөвшөөрөл хүссэн байдал</Text>
-                </View>
+              return (
+                <TouchableOpacity
+                  key={String(ride.id)}
+                  style={styles.bookedRideCard}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/ride/[id]",
+                      params: { id: String(ride.id), role: "rider" },
+                    })
+                  }
+                >
+                  <Image
+                    source={getRideAvatarSource(ride.avatar_id)}
+                    style={styles.bookedAvatar}
+                  />
 
-                <Image
-                  source={seatImages[getAvailableSeats(ride)] || seatImages[1]}
-                  style={styles.bookedSeatImage}
-                />
-              </TouchableOpacity>
-            ))}
+                  <View style={styles.bookedInfo}>
+                    {getRideOwnerName(ride) ? (
+                      <Text style={styles.bookedName}>{getRideOwnerName(ride)}</Text>
+                    ) : null}
+                    <Text style={styles.bookedDate}>Огноо: {ride.ride_date || "-"}</Text>
+                    <Text style={styles.bookedTime}>⏰ {ride.start_time || "-"}</Text>
+                    <Text style={styles.bookedEnd} numberOfLines={1}>
+                      📍 Очих газар: {ride.end_location || "Тодорхойгүй"}
+                    </Text>
+                    <Text style={styles.bookedPrice}>1 суудал: {ride.price ?? 0}₮</Text>
+                    <Text
+                      style={[
+                        styles.bookedBadge,
+                        { color: getBookingStatusColor(bookingStatus) },
+                      ]}
+                    >
+                      {bookingStatusLabel}
+                    </Text>
+                  </View>
+
+                  <Image
+                    source={seatImages[getAvailableSeats(ride)] || seatImages[1]}
+                    style={styles.bookedSeatImage}
+                  />
+                </TouchableOpacity>
+              );
+            })}
               </ScrollView>
             </View>
           </View>
         )}
-        {bookedRides.length === 0 && (
-          <View style={styles.emptyStateCard}>
-            <Text style={styles.emptyStateText}>Танд одоогоор захиалга байхгүй байна.</Text>
-          </View>
+        {bookedRideList.length === 0 && (
+          <IllustratedEmptyState
+            icon="event-seat"
+            eyebrow="Booked Rides"
+            title="Та одоогоор чиглэлд захиалга өгөөгүй байна"
+            body="Тохирох чиглэл олдвол та шууд суудал захиалж, энэ хэсэгт цэгцтэй хянах боломжтой."
+            tone="gold"
+            compact
+            style={styles.emptyStateCard}
+          />
         )}
 
         {/* ACTIVE ROUTE */}
@@ -359,7 +1139,7 @@ const startLng = params.startLng;
                 <Text style={styles.activeEnd} numberOfLines={2}>
                   📍 Очих газар: {activeRide.end_location ?? activeRide.to_location ?? "Тодорхойгүй"}
                 </Text>
-                <Text style={styles.activePrice}>Суудал: {activeRide.price ?? 0}₮</Text>
+                <Text style={styles.activePrice}>1 суудал: {activeRide.price ?? 0}₮</Text>
               </View>
               <Image
                 source={seatImages[getAvailableSeats(activeRide)] || seatImages[1]}
@@ -368,18 +1148,30 @@ const startLng = params.startLng;
             </View>
           </TouchableOpacity>
         ) : (
-          <View style={styles.emptyStateCard}>
-            <Text style={styles.emptyStateText}>Идэвхтэй аялал одоогоор байхгүй байна.</Text>
-          </View>
+          <IllustratedEmptyState
+            icon="local-taxi"
+            eyebrow="Driver Route"
+            title="Танд үүсгэсэн аялал алга байна"
+            body="Шинэ route үүсгээд, ойрхон зорчигчдыг цэгцтэй цуглуулах боломжоо нээгээрэй."
+            tone="accent"
+            compact
+            style={styles.emptyStateCard}
+          />
         )}
 
         <TouchableOpacity
           style={styles.pickupBtn}
-          onPress={() => router.push("/location")}
+          onPress={() =>
+            router.push({
+              pathname: "/location/map",
+              params: { returnTo: "home" },
+            })
+          }
         >
-          <Text style={styles.pickupText}>
-              📍 Та хаанаас явна вэ?
-          </Text>
+          <View style={styles.ctaButtonRow}>
+            <AppIconBadge name="pin-drop" theme="accent" />
+            <Text style={styles.pickupText}>Шинээр чиглэл үүсгэх</Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -392,20 +1184,45 @@ const startLng = params.startLng;
               return;
             }
 
-            router.push({
-              pathname: "/ride/create/map",
-              params: {
-                startLat,
-                startLng,
-              },
-            });
-          }}
+              router.push({
+                pathname: "/ride/create/map",
+                params: {
+                  startLat,
+                  startLng,
+                  ...(startLabel ? { startLabel } : {}),
+                },
+              });
+            }}
         >
-            <Text style={styles.createBtnText}>Очиж явах</Text>
+          <View style={styles.ctaButtonRow}>
+            <AppIconBadge name="route" theme="light" />
+            <Text style={styles.createBtnText}>Очих байршилаа оруулна уу</Text>
+          </View>
         </TouchableOpacity>
 
+        </LinearGradient>
         </View>
       </ScrollView>
+      <Modal
+        transparent
+        visible={activeTrustTip !== null}
+        animationType="fade"
+        onRequestClose={closeTrustTip}
+      >
+        <Pressable style={styles.trustHintBackdrop} onPress={closeTrustTip}>
+          <Pressable style={styles.trustHintModalCard} onPress={() => {}}>
+            <Text style={styles.trustHintTitle}>
+              {trustLevelHints[(activeTrustTip ?? 1) - 1]?.title}
+            </Text>
+            <Text style={styles.trustHintText}>
+              {trustLevelHints[(activeTrustTip ?? 1) - 1]?.text}
+            </Text>
+            <TouchableOpacity onPress={closeTrustTip}>
+              <Text style={styles.trustHintClose}>Хаах</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -445,25 +1262,81 @@ const icons = {
 
 /* STYLES */
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F4F6F5" },
-  scrollContent: { paddingBottom: 120 },
+  safe: { flex: 1, backgroundColor: AppTheme.colors.canvas },
+  scrollContent: { paddingBottom: 132 },
   container: { padding: 16 },
 
+  premiumHero: {
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 18,
+    ...AppTheme.shadow.floating,
+  },
+  heroCard: {
+    borderRadius: 28,
+    padding: 18,
+    marginBottom: 18,
+    ...AppTheme.shadow.floating,
+  },
   headerRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 18,
+  },
+  premiumHeroTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  premiumHeroTitleWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  premiumHeroEyebrow: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  premiumGreetingText: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: AppTheme.colors.white,
+    marginBottom: 10,
+  },
+  premiumHeroSubtext: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  premiumHeroActionRow: {
+    flexDirection: "row",
   },
   iconTopRow: {
     flexDirection: "row",
     alignItems: "center",
   },
-
   topIcon: {
-    width: 30,
-    height: 30,
-    marginLeft: 16,
+    width: 20,
+    height: 20,
+    tintColor: AppTheme.colors.white,
+  },
+  premiumTopIcon: {
+    width: 20,
+    height: 20,
+    tintColor: AppTheme.colors.white,
+  },
+  premiumTopIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
   },
   notificationWrap: {
     position: "relative",
@@ -478,180 +1351,295 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ef4444",
+    backgroundColor: AppTheme.colors.badge,
     borderWidth: 1,
-    borderColor: "#ffffff",
+    borderColor: AppTheme.colors.white,
   },
   badgeText: {
-    color: "#ffffff",
+    color: AppTheme.colors.white,
     fontSize: 9,
     fontWeight: "700",
     lineHeight: 11,
   },
-
   greetingText: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "700",
-    color: "#111",
+    color: AppTheme.colors.white,
   },
-
   avatarCenter: {
     alignItems: "flex-start",
-    marginBottom: 16,
   },
-
+  premiumHeroBody: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  premiumAvatarColumn: {
+    width: 116,
+    marginRight: 14,
+  },
   profileWrap: {
     position: "relative",
     overflow: "visible",
   },
-
   avatar: {
-    width: 105,
-    height: 105,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.72)",
   },
-
+  premiumProfileWrap: {
+    position: "relative",
+    overflow: "visible",
+  },
+  premiumAvatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.72)",
+  },
   shield: {
     position: "absolute",
-    bottom: -2,
-    right: -14,
-    width: 56,
-    height: 56,
+    bottom: 0,
+    right: -6,
+    width: 48,
+    height: 48,
   },
   shieldBtn: {
     position: "absolute",
-    bottom: -2,
-    right: -14,
-    width: 56,
-    height: 56,
+    bottom: 0,
+    right: -6,
+    width: 48,
+    height: 48,
+    zIndex: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  premiumShield: {
+    position: "absolute",
+    bottom: 1,
+    right: -4,
+    width: 44,
+    height: 44,
+  },
+  premiumShieldBtn: {
+    position: "absolute",
+    bottom: 1,
+    right: -4,
+    width: 44,
+    height: 44,
     zIndex: 12,
     justifyContent: "center",
     alignItems: "center",
   },
 
   shieldHintCard: {
-    backgroundColor: "#ffffff",
-    borderColor: "#E5E7EB",
+    backgroundColor: AppTheme.colors.card,
+    borderColor: AppTheme.colors.border,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginTop: 8,
     alignSelf: "flex-start",
     width: 220,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 2,
+    ...AppTheme.shadow.card,
     zIndex: 10,
   },
-
   ratingRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
     marginBottom: 12,
   },
-
-  trustHintCard: {
-    backgroundColor: "#ffffff",
-    borderColor: "#E5E7EB",
+  premiumRatingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    marginTop: 12,
+  },
+  premiumHeroSide: {
+    flex: 1,
+    justifyContent: "flex-start",
+  },
+  premiumWalletCard: {
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderRadius: 12,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  premiumWalletLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  premiumWalletValueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  premiumCoinIcon: {
+    width: 22,
+    height: 22,
+    marginRight: 8,
+  },
+  premiumWalletValue: {
+    color: AppTheme.colors.white,
+    fontSize: 28,
+    fontWeight: "700",
+  },
+  premiumStatsRow: {
+    display: "none",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12,
+  },
+  premiumMiniStatCard: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  premiumMiniStatValue: {
+    color: AppTheme.colors.white,
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  premiumMiniStatLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+  },
+  premiumPillRow: {
+    display: "none",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 12,
+  },
+  premiumInfoPill: {
+    borderRadius: AppTheme.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  premiumInfoPillText: {
+    color: AppTheme.colors.white,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  trustHintCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderColor: AppTheme.colors.border,
+    borderWidth: 1,
+    borderRadius: 16,
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 2,
+    ...AppTheme.shadow.card,
+  },
+  trustHintBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.22)",
+    justifyContent: "flex-start",
+    paddingTop: 220,
+    paddingHorizontal: 16,
+  },
+  trustHintModalCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderColor: AppTheme.colors.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    ...AppTheme.shadow.card,
   },
   trustHintTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#0f172a",
+    color: AppTheme.colors.text,
     marginBottom: 4,
+  },
+  premiumShieldHintCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderColor: AppTheme.colors.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    width: 220,
+    ...AppTheme.shadow.card,
+  },
+  premiumShieldHintText: {
+    fontSize: 13,
+    color: AppTheme.colors.text,
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  premiumHintClose: {
+    color: AppTheme.colors.accentDeep,
+    fontWeight: "700",
   },
   shieldHintPlainText: {
     fontSize: 14,
     fontWeight: "400",
-    color: "#0f172a",
+    color: AppTheme.colors.text,
     marginBottom: 4,
   },
   trustHintText: {
     fontSize: 13,
-    color: "#334155",
+    color: AppTheme.colors.textMuted,
     marginBottom: 6,
   },
   trustHintClose: {
-    color: "#2563eb",
+    color: AppTheme.colors.accentDeep,
     fontWeight: "700",
   },
-
   star: {
     width: 22,
     height: 22,
-   
   },
-
-  ratingText: {
-    fontSize: 18,
-    fontWeight: "600",
-  
-   
+  premiumStar: {
+    width: 20,
+    height: 20,
   },
-
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 16,
-    elevation: 3,
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    ...AppTheme.shadow.card,
   },
-
+  premiumActiveCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    ...AppTheme.shadow.card,
+  },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 8,
   },
-
   cardIcon: {
     width: 22,
     height: 22,
     marginRight: 6,
+    tintColor: AppTheme.colors.accent,
   },
-
   cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-
-  routeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 6,
-    flexWrap: "wrap",
-  },
-
-  from: { color: "#4CAF8C", fontWeight: "600" },
-  to: { color: "#111", fontWeight: "600" },
-  arrow: { marginHorizontal: 6, color: "#4CAF8C" },
-
-  timeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 6,
-  },
-
-  timeIcon: {
-    width: 18,
-    height: 18,
-    marginRight: 6,
-  },
-
-  timeText: {
-    color: "#555",
+    fontSize: 20,
+    fontWeight: "700",
+    color: AppTheme.colors.text,
   },
   activeContentRow: {
     flexDirection: "row",
@@ -659,214 +1647,297 @@ const styles = StyleSheet.create({
   },
   activeInfo: {
     flex: 1,
+    paddingRight: 12,
   },
   activeName: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 2,
+    color: AppTheme.colors.text,
+    marginBottom: 4,
   },
   activeDate: {
     fontSize: 12,
-    color: "#64748b",
+    color: AppTheme.colors.textMuted,
   },
   activeTime: {
-    marginTop: 2,
+    marginTop: 4,
     fontSize: 14,
     fontWeight: "600",
-    color: "#0f172a",
+    color: AppTheme.colors.text,
   },
   activeEnd: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#334155",
+    marginTop: 6,
+    fontSize: 13,
+    color: AppTheme.colors.textMuted,
+    lineHeight: 18,
   },
   activePrice: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#0f172a",
-    fontWeight: "600",
+    marginTop: 8,
+    fontSize: 13,
+    color: AppTheme.colors.text,
+    fontWeight: "700",
   },
   activeSeatImage: {
     width: 74,
     height: 84,
     resizeMode: "contain",
-    marginLeft: 8,
+  },
+  premiumSeatCard: {
+    width: 96,
+    minHeight: 112,
+    borderRadius: 20,
+    backgroundColor: AppTheme.colors.cardSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  owIcon: {
+    width: 22,
+    height: 22,
+    marginRight: 6,
   },
   owWrap: {
-  position: "absolute",
-  top: 70,
-  left: 300,
-  backgroundColor: "#fcf6f6",
-  paddingHorizontal: 12,
-  paddingVertical: 6,
-  borderRadius: 10,
-  flexDirection: "row",
-  alignItems: "center",
-  borderWidth: 0.5,
-  borderColor: "#4CAF8C",
-  transform: [{ scale: 1.4 }],
-},
-
-owIcon: {
-  width: 22,
-  height: 22,
-  marginRight: 6,
-},
-
-owLabel: {
-  fontSize: 10,
-  color: "#aaa",
-},
-
-owBalance: {
-  color: "#4CAF8C",
-  fontWeight: "700",
-  fontSize: 24,
-},
-createBtn: {
-  alignSelf: "stretch",
-  backgroundColor: "#2563eb",
-  paddingVertical: 18,
-  borderRadius: 16,
-  alignItems: "center",
-  marginBottom: 12,
-  elevation: 6,          // Android shadow
-  shadowColor: "#000",   // iOS shadow
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
-  shadowRadius: 6,
-},
-
-createBtnText: {
-  color: "#fff",
-  fontSize: 16,
-  fontWeight: "700",
-},
-pickupBtn: {
-  backgroundColor: "#4CAF8C",
-  paddingVertical: 16,
-  borderRadius: 16,
-  alignItems: "center",
-  marginBottom: 20,
-},
-
-pickupText: {
-  color: "#fff",
-  fontSize: 16,
-  fontWeight: "700",
-},
-bookedWrap: {
-  marginBottom: 12,
-},
-bookedScrollCard: {
-  maxHeight: 220,
-  backgroundColor: "#ffffff",
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: "#e2e8f0",
-  padding: 8,
-},
-bookedScrollContent: {
-  paddingBottom: 2,
-},
-bookedTitle: {
-  fontSize: 14,
-  fontWeight: "700",
-  color: "#334155",
-  marginBottom: 8,
-},
-bookedRideCard: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#ffffff",
-  borderRadius: 12,
-  borderWidth: 1,
-  borderColor: "#e2e8f0",
-  paddingHorizontal: 10,
-  paddingVertical: 10,
-  marginBottom: 8,
-},
-bookedAvatar: {
-  width: 48,
-  height: 48,
-  borderRadius: 24,
-  marginRight: 10,
-},
-bookedInfo: {
-  flex: 1,
-},
-bookedName: {
-  fontSize: 13,
-  fontWeight: "700",
-  color: "#0f172a",
-  marginBottom: 2,
-},
-bookedDate: {
-  fontSize: 11,
-  color: "#64748b",
-},
-bookedTime: {
-  marginTop: 2,
-  fontSize: 13,
-  fontWeight: "600",
-},
-bookedEnd: {
-  marginTop: 4,
-  fontSize: 12,
-  color: "#334155",
-},
-bookedPrice: {
-  marginTop: 3,
-  fontSize: 12,
-  color: "#0f172a",
-},
-bookedBadge: {
-  marginTop: 4,
-  fontSize: 12,
-  fontWeight: "700",
-  color: "#16a34a",
-},
-bookedPending: {
-  marginTop: 2,
-  fontSize: 11,
-  color: "#64748b",
-},
-bookedSeatImage: {
-  width: 62,
-  height: 62,
-  resizeMode: "contain",
-  marginLeft: 8,
-},
-emptyStateCard: {
-  backgroundColor: "#ffffff",
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: "#e2e8f0",
-  paddingVertical: 14,
-  paddingHorizontal: 12,
-  marginBottom: 12,
-},
-emptyStateText: {
-  fontSize: 14,
-  color: "#334155",
-  fontWeight: "600",
-},
-bookedMain: {
-  fontSize: 14,
-  fontWeight: "600",
-  color: "#0f172a",
-},
-bookedMeta: {
-  marginTop: 2,
-  fontSize: 12,
-  color: "#64748b",
-},
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+  },
+  owLabel: {
+    fontSize: 10,
+    color: "rgba(255,255,255,0.7)",
+  },
+  owBalance: {
+    color: AppTheme.colors.white,
+    fontWeight: "700",
+    fontSize: 28,
+  },
+  premiumCreateBtn: {
+    alignSelf: "stretch",
+    backgroundColor: AppTheme.colors.accent,
+    paddingVertical: 18,
+    borderRadius: 18,
+    alignItems: "center",
+    marginTop: 12,
+    ...AppTheme.shadow.card,
+  },
+  premiumCreateBtnDisabled: {
+    backgroundColor: "#93a69a",
+  },
+  createBtn: {
+    alignSelf: "stretch",
+    backgroundColor: AppTheme.colors.accent,
+    paddingVertical: 18,
+    borderRadius: 18,
+    alignItems: "center",
+    marginTop: 12,
+  },
+  createBtnText: {
+    color: AppTheme.colors.white,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  ctaButtonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  premiumPickupBtn: {
+    backgroundColor: AppTheme.colors.cardSoft,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+  },
+  pickupBtn: {
+    backgroundColor: AppTheme.colors.cardSoft,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    alignItems: "center",
+  },
+  pickupText: {
+    color: AppTheme.colors.text,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  premiumPickupSubtext: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  bookedWrap: {
+    marginBottom: 18,
+  },
+  premiumSectionCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 24,
+    padding: 18,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    ...AppTheme.shadow.card,
+  },
+  premiumSectionEyebrow: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: AppTheme.colors.accent,
+    marginBottom: 8,
+  },
+  premiumSectionTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: AppTheme.colors.text,
+    marginBottom: 6,
+  },
+  premiumSectionText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: AppTheme.colors.textMuted,
+    marginBottom: 14,
+  },
+  premiumBookedScrollCard: {
+    maxHeight: 264,
+    backgroundColor: AppTheme.colors.cardSoft,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    padding: 8,
+  },
+  bookedScrollCard: {
+    maxHeight: 220,
+    backgroundColor: AppTheme.colors.cardSoft,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    padding: 8,
+  },
+  bookedScrollContent: {
+    paddingBottom: 2,
+  },
+  bookedTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: AppTheme.colors.text,
+    marginBottom: 6,
+  },
+  premiumBookedRideCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  bookedRideCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  bookedAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 10,
+  },
+  bookedInfo: {
+    flex: 1,
+  },
+  bookedName: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: AppTheme.colors.text,
+    marginBottom: 2,
+  },
+  bookedDate: {
+    fontSize: 11,
+    color: AppTheme.colors.textMuted,
+  },
+  bookedTime: {
+    marginTop: 3,
+    fontSize: 13,
+    fontWeight: "600",
+    color: AppTheme.colors.text,
+  },
+  bookedEnd: {
+    marginTop: 4,
+    fontSize: 12,
+    color: AppTheme.colors.textMuted,
+  },
+  bookedPrice: {
+    marginTop: 4,
+    fontSize: 12,
+    color: AppTheme.colors.text,
+  },
+  bookedBadge: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "700",
+    color: AppTheme.colors.accentDeep,
+  },
+  bookedSeatImage: {
+    width: 62,
+    height: 62,
+    resizeMode: "contain",
+    marginLeft: 8,
+  },
+  premiumEmptyStateCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    marginBottom: 18,
+    ...AppTheme.shadow.card,
+  },
+  premiumEmptyStateTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: AppTheme.colors.text,
+    marginBottom: 6,
+  },
+  premiumEmptyStateText: {
+    fontSize: 14,
+    color: AppTheme.colors.textMuted,
+    fontWeight: "500",
+    lineHeight: 20,
+  },
+  emptyStateCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    marginBottom: 18,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    color: AppTheme.colors.textMuted,
+    fontWeight: "600",
+  },
 });
-
-
-
-
 
 
 

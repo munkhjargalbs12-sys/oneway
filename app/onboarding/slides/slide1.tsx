@@ -49,7 +49,7 @@ export default function Slide1({ active }: Props) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [active]);
+  }, [active, bulletsFade, descFade, highlightFade, imageFade, titleFade]);
 
   return (
     <View style={styles.container}>

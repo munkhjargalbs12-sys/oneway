@@ -1,159 +1,171 @@
+import { AppFontFamily, AppTheme } from "@/constants/theme";
+import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import {
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { apiFetch } from "../services/apiClient";
+import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+
 export default function Role() {
   const params = useLocalSearchParams();
   const [role, setRole] = useState<"driver" | "rider" | null>(null);
 
   return (
-    <View style={styles.container}>
-      {/* HEADER IMAGE */}
-      <Image
-        source={require("../assets/images/role-header.png")}
-        style={styles.headerImage}
-        resizeMode="contain"
-      />
+    <View style={styles.safe}>
+      <LinearGradient
+        colors={[AppTheme.colors.accentDeep, AppTheme.colors.accent]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <Image
+          source={require("../assets/images/role-header.png")}
+          style={styles.heroImage}
+          resizeMode="contain"
+        />
+        <Text style={styles.heroEyebrow}>Choose Mode</Text>
+        <Text style={styles.heroTitle}>Та одоохондоо ямар байдлаар ашиглах вэ?</Text>
+        <Text style={styles.heroBody}>
+          Жолооч эсвэл зорчигчийн урсгалыг сонгосноор дараагийн байршлын алхам автоматаар тохирно.
+        </Text>
+      </LinearGradient>
 
-      {/* TITLE */}
-      <Text style={styles.title}>Та аль нь вэ?</Text>
-      <Text style={styles.subtitle}>
-        Та одоохондоо аль байдлаар ашиглах вэ
-      </Text>
-
-      {/* ROLE CARDS */}
-      <View style={styles.cardRow}>
-        {/* DRIVER */}
+      <View style={styles.cardGrid}>
         <TouchableOpacity
-          style={[styles.card, role === "driver" && styles.selected]}
+          activeOpacity={0.92}
+          style={[styles.optionCard, role === "driver" && styles.optionCardActive]}
           onPress={() => setRole("driver")}
-          activeOpacity={0.9}
         >
-          <Image
-            source={require("../assets/images/driver.png")}
-            style={styles.cardImage}
-            resizeMode="contain"
-          />
-          <Text style={styles.cardTitle}>Машинтай</Text>
-          <Text style={styles.cardDesc}>
-            Би бусдыг хамт авч явна
+          <Image source={require("../assets/images/driver.png")} style={styles.cardImage} resizeMode="contain" />
+          <Text style={[styles.optionTitle, role === "driver" && styles.optionTitleActive]}>Машинтай</Text>
+          <Text style={[styles.optionText, role === "driver" && styles.optionTextActive]}>
+            Би бусдыг замдаа хамт авч явна
           </Text>
         </TouchableOpacity>
 
-        {/* RIDER */}
         <TouchableOpacity
-          style={[styles.card, role === "rider" && styles.selected]}
+          activeOpacity={0.92}
+          style={[styles.optionCard, role === "rider" && styles.optionCardActive]}
           onPress={() => setRole("rider")}
-          activeOpacity={0.9}
         >
-          <Image
-            source={require("../assets/images/rider.png")}
-            style={styles.cardImage}
-            resizeMode="contain"
-          />
-          <Text style={styles.cardTitle}>Машингүй</Text>
-          <Text style={styles.cardDesc}>
-            Би хамт явах хүн хайж байна
+          <Image source={require("../assets/images/rider.png")} style={styles.cardImage} resizeMode="contain" />
+          <Text style={[styles.optionTitle, role === "rider" && styles.optionTitleActive]}>Машингүй</Text>
+          <Text style={[styles.optionText, role === "rider" && styles.optionTextActive]}>
+            Би тохирох унаа хайж хамт явна
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* CONTINUE */}
       <TouchableOpacity
-        style={[styles.button, !role && { opacity: 0.4 }]}
+        activeOpacity={0.92}
+        style={[styles.primaryButton, !role && styles.primaryButtonDisabled]}
         disabled={!role}
         onPress={() =>
           router.push({
-          pathname: "/location",
-          params: { ...params, role },
+            pathname: "/location",
+            params: { ...params, role },
           })
         }
       >
-        <Text style={styles.buttonText}>Үргэлжлүүлэх</Text>
+        <Text style={styles.primaryButtonText}>Үргэлжлүүлэх</Text>
       </TouchableOpacity>
     </View>
   );
 }
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F6F8F7",
-    padding: 24,
-  },
 
-  headerImage: {
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: AppTheme.colors.canvas,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 32,
+  },
+  heroCard: {
+    borderRadius: AppTheme.radius.lg,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
+    ...AppTheme.shadow.floating,
+  },
+  heroImage: {
     width: "100%",
     height: 180,
+    marginBottom: 14,
+  },
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    fontFamily: AppFontFamily,
+  },
+  heroTitle: {
+    color: AppTheme.colors.white,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "700",
+    fontFamily: AppFontFamily,
+  },
+  heroBody: {
+    color: "rgba(255,255,255,0.84)",
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 10,
+  },
+  cardGrid: {
+    marginTop: 16,
+  },
+  optionCard: {
+    backgroundColor: AppTheme.colors.card,
+    borderRadius: AppTheme.radius.lg,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    alignItems: "center",
+    ...AppTheme.shadow.card,
+  },
+  optionCardActive: {
+    backgroundColor: AppTheme.colors.accent,
+    borderColor: AppTheme.colors.accent,
+  },
+  cardImage: {
+    width: 104,
+    height: 104,
     marginBottom: 12,
   },
-
-  title: {
-    fontSize: 22,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 6,
-  },
-
-  subtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-
-  cardRow: {
-    flexDirection: "row",
-    gap: 16,
-    marginBottom: 32,
-  },
-
-  card: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 16,
-    alignItems: "center",
-  },
-
-  selected: {
-    borderWidth: 2,
-    borderColor: "#4CAF8C",
-  },
-
-  cardImage: {
-    width: 90,
-    height: 90,
-    marginBottom: 8,
-  },
-
-  cardTitle: {
-    fontSize: 16,
+  optionTitle: {
+    color: AppTheme.colors.text,
+    fontSize: 20,
     fontWeight: "700",
-    marginBottom: 4,
+    fontFamily: AppFontFamily,
   },
-
-  cardDesc: {
-    fontSize: 13,
-    color: "#6B7280",
+  optionTitleActive: {
+    color: AppTheme.colors.white,
+  },
+  optionText: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: "center",
+    marginTop: 8,
   },
-
-  button: {
-    height: 54,
-    backgroundColor: "#4CAF8C",
-    borderRadius: 28,
+  optionTextActive: {
+    color: "rgba(255,255,255,0.84)",
+  },
+  primaryButton: {
+    minHeight: 58,
+    borderRadius: AppTheme.radius.pill,
+    backgroundColor: AppTheme.colors.accent,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: "auto",
+    ...AppTheme.shadow.floating,
   },
-
-  buttonText: {
-    color: "#fff",
+  primaryButtonDisabled: {
+    opacity: 0.55,
+  },
+  primaryButtonText: {
+    color: AppTheme.colors.white,
     fontSize: 16,
     fontWeight: "700",
   },

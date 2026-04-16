@@ -61,7 +61,7 @@ export default function Slide2({ active }: Props) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [active]);
+  }, [active, bulletsFade, descFade, dotsFade, highlightFade, imageFade, titleFade]);
 
   return (
     <View style={styles.container}>

@@ -54,7 +54,7 @@ export default function Slide3({ active }: Props) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [active]);
+  }, [active, bulletsFade, dotsFade, highlightFade, imageFade, titleFade]);
 
   return (
     <View style={styles.container}>

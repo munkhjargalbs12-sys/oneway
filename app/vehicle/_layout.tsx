@@ -1,3 +1,5 @@
+import HeaderBackButton from "@/components/HeaderBackButton";
+import { AppFontFamily, AppTheme } from "@/constants/theme";
 import { Stack } from "expo-router";
 
 export default function VehicleLayout() {
@@ -5,14 +7,22 @@ export default function VehicleLayout() {
     <Stack
       screenOptions={{
         headerShown: true,
-        headerBackTitle: "",
-        headerBackTitleVisible: false,
-        headerTintColor: "#111827",
-        headerStyle: { backgroundColor: "#ffffff" },
-        headerTitle: "",
+        headerTintColor: AppTheme.colors.text,
+        headerStyle: { backgroundColor: AppTheme.colors.card },
+        headerShadowVisible: false,
+        headerTitleAlign: "center",
+        headerTitleStyle: {
+          fontFamily: AppFontFamily,
+          fontSize: 17,
+          fontWeight: "700",
+          color: AppTheme.colors.text,
+        },
+        headerLeft: ({ tintColor }) => (
+          <HeaderBackButton tintColor={tintColor} />
+        ),
       }}
     >
-      <Stack.Screen name="add" />
+      <Stack.Screen name="add" options={{ title: "Машин нэмэх" }} />
     </Stack>
   );
 }
