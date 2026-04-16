@@ -15,7 +15,10 @@ import {
   syncExpoPushTokenWithBackend,
   syncPushTokenWithBackend,
 } from "@/services/pushNotifications";
-import { clearRideReminderNotifications } from "@/services/rideReminders";
+import {
+  clearRideReminderNotifications,
+  syncRideReminderNotificationsFromServer,
+} from "@/services/rideReminders";
 import * as Notifications from "expo-notifications";
 import { Stack, router, usePathname } from "expo-router";
 import React, { useCallback, useEffect } from "react";
@@ -66,6 +69,21 @@ export default function RootLayout() {
     }
   }, []);
 
+  const pollRideReminders = useCallback(async () => {
+    const token = await getToken();
+
+    if (!token) {
+      void clearRideReminderNotifications();
+      return;
+    }
+
+    try {
+      await syncRideReminderNotificationsFromServer();
+    } catch (err) {
+      console.log("Global ride reminder sync failed", err);
+    }
+  }, []);
+
   useEffect(() => {
     if (isPublicRoute) {
       resetNotificationSoundState();
@@ -75,11 +93,16 @@ export default function RootLayout() {
     }
 
     void pollNotificationSound();
+    void pollRideReminders();
     void syncRideMeetupTracking();
 
     const notificationTimer = setInterval(() => {
       void pollNotificationSound();
     }, 8000);
+
+    const reminderTimer = setInterval(() => {
+      void pollRideReminders();
+    }, 60000);
 
     const meetupTimer = setInterval(() => {
       void syncRideMeetupTracking();
@@ -87,9 +110,10 @@ export default function RootLayout() {
 
     return () => {
       clearInterval(notificationTimer);
+      clearInterval(reminderTimer);
       clearInterval(meetupTimer);
     };
-  }, [isPublicRoute, pollNotificationSound]);
+  }, [isPublicRoute, pollNotificationSound, pollRideReminders]);
 
   useEffect(() => {
     if (isPublicRoute) {

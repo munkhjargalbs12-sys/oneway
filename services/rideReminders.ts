@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 
 import { apiFetch } from "./apiClient";
+import { getToken } from "./authStorage";
 import { getRideStartDate } from "./rideTiming";
 
 const REMINDER_PREFIX = "oneway-ride-reminder";
@@ -301,4 +302,29 @@ export async function syncRideReminderNotifications({
   }
 
   return true;
+}
+
+export async function syncRideReminderNotificationsFromServer() {
+  const token = await getToken();
+  if (!token) {
+    await clearRideReminderNotifications();
+    return false;
+  }
+
+  const [allRidesResult, myRidesResult, bookingsResult] = await Promise.allSettled([
+    apiFetch("/rides"),
+    apiFetch("/rides/mine"),
+    apiFetch("/bookings/mine"),
+  ]);
+
+  const allRides = allRidesResult.status === "fulfilled" ? allRidesResult.value : [];
+  const myRides = myRidesResult.status === "fulfilled" ? myRidesResult.value : [];
+  const bookings =
+    bookingsResult.status === "fulfilled" ? bookingsResult.value : { bookings: [] };
+
+  return syncRideReminderNotifications({
+    allRides,
+    myRides,
+    bookings,
+  });
 }
