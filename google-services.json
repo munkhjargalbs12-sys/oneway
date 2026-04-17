@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "590768219854",
+    "project_id": "oneway-mn",
+    "storage_bucket": "oneway-mn.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:590768219854:android:8bd44e7e5dbd703a4a529f",
+        "android_client_info": {
+          "package_name": "com.anonymous.oneway"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWmNlwiZrbaua3YIUVTJGCjJRzzdaeWyU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

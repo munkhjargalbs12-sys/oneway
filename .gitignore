@@ -43,6 +43,7 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+*firebase-adminsdk*.json
 
 # local env files
 .env*.local

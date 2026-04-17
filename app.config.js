@@ -35,6 +35,11 @@ if (!hasPlugin("expo-notifications")) {
 module.exports = {
   expo: {
     ...baseExpoConfig,
+    android: {
+      ...baseExpoConfig.android,
+      package: "com.anonymous.oneway",
+      googleServicesFile: "./google-services.json",
+    },
     plugins,
     runtimeVersion: process.env.EXPO_RUNTIME_VERSION || baseExpoConfig.version || "1.0.0",
     updates: {
