@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 
 import { apiFetch } from "./apiClient";
@@ -8,6 +9,10 @@ const REMINDER_PREFIX = "oneway-ride-reminder";
 const REMINDER_KIND = "ride_reminder";
 const REMINDER_CHANNEL_ID = "default";
 const REMINDER_LEAD_MINUTES = 10;
+const IMMEDIATE_REMINDER_DELAY_MS = 2000;
+const IMMEDIATE_REMINDER_STATE_KEY = "oneway_ride_reminder_immediate_state";
+
+type ReminderScheduleKind = "scheduled" | "late";
 
 function hasGrantedPermission(
   settings: Notifications.NotificationPermissionsStatus
@@ -81,6 +86,20 @@ function shouldScheduleRideReminder(ride: any, now = new Date()) {
   return reminderDate.getTime() > now.getTime();
 }
 
+function isReminderEligible(ride: any, now = new Date()) {
+  const status = normalizeStatus(ride?.status);
+  if (["started", "completed", "cancelled", "canceled"].includes(status)) {
+    return false;
+  }
+
+  const startDate = getRideStartDate(ride);
+  if (!startDate) {
+    return false;
+  }
+
+  return startDate.getTime() > now.getTime();
+}
+
 function buildReminderTitle() {
   return "Уулзах цаг дөхлөө";
 }
@@ -115,6 +134,14 @@ type ReminderTarget = {
   role: "driver" | "rider";
 };
 
+type ImmediateReminderState = Record<string, string>;
+
+type ReminderSchedulePlan = {
+  triggerDate: Date;
+  kind: ReminderScheduleKind;
+  startKey: string;
+};
+
 function buildReminderTargets({
   allRides,
   myRides,
@@ -129,7 +156,7 @@ function buildReminderTargets({
 
   for (const ride of extractRideList(myRides)) {
     const rideId = toRideId(ride?.id);
-    if (!rideId || !shouldScheduleRideReminder(ride, now)) {
+    if (!rideId || !isReminderEligible(ride, now)) {
       continue;
     }
 
@@ -151,7 +178,7 @@ function buildReminderTargets({
     }
 
     const ride = rideById.get(rideId);
-    if (!ride || !shouldScheduleRideReminder(ride, now)) {
+    if (!ride || !isReminderEligible(ride, now)) {
       continue;
     }
 
@@ -160,6 +187,119 @@ function buildReminderTargets({
   }
 
   return Array.from(targets.values());
+}
+
+async function getImmediateReminderState() {
+  try {
+    const raw = await AsyncStorage.getItem(IMMEDIATE_REMINDER_STATE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveImmediateReminderState(state: ImmediateReminderState) {
+  const entries = Object.entries(state).filter(
+    ([key, value]) => key && typeof value === "string" && value
+  );
+
+  if (entries.length === 0) {
+    await AsyncStorage.removeItem(IMMEDIATE_REMINDER_STATE_KEY).catch(() => null);
+    return;
+  }
+
+  await AsyncStorage.setItem(
+    IMMEDIATE_REMINDER_STATE_KEY,
+    JSON.stringify(Object.fromEntries(entries))
+  ).catch(() => null);
+}
+
+function buildLateReminderBody(ride: any, now = new Date()) {
+  const startLocation = String(ride?.start_location || "").trim();
+  const endLocation = String(ride?.end_location || "").trim();
+  const startTime = String(ride?.start_time || "").trim().slice(0, 5);
+  const startDate = getRideStartDate(ride);
+  const remainingMinutes = startDate
+    ? Math.max(1, Math.ceil((startDate.getTime() - now.getTime()) / 60000))
+    : null;
+  const routePrefix = endLocation ? `${endLocation} чиглэлийн` : "Таны аяллын";
+  const timePrompt = remainingMinutes
+    ? `${remainingMinutes} минутын дараа`
+    : "удахгүй";
+  const locationPrompt =
+    "Уулзах цэгт очсоныг баталгаажуулахын тулд location-оо яг одоо асаана уу.";
+
+  if (startLocation && startTime) {
+    return `${routePrefix} уулзалт ${timePrompt} эхэлнэ. ${startLocation} цэгтээ очоорой. ${startTime}-ийн өмнө ${locationPrompt}`;
+  }
+
+  if (startLocation) {
+    return `${routePrefix} уулзалт ${timePrompt} эхэлнэ. ${startLocation} цэгтээ очоорой. ${locationPrompt}`;
+  }
+
+  if (startTime) {
+    return `${routePrefix} уулзалт ${timePrompt} эхэлнэ. ${startTime}-ийн өмнө уулзах цэгтээ очоорой. ${locationPrompt}`;
+  }
+
+  return `${routePrefix} уулзалт ${timePrompt} эхэлнэ. Уулзах цэгтээ очоорой. ${locationPrompt}`;
+}
+
+function buildReminderNotificationContent(
+  ride: any,
+  kind: ReminderScheduleKind,
+  now = new Date()
+) {
+  if (kind === "late") {
+    return {
+      title: "Аялал удахгүй эхэлнэ • Location асаана уу",
+      body: buildLateReminderBody(ride, now),
+    };
+  }
+
+  return {
+    title: "Уулзах цаг дөхлөө • Location асаана уу",
+    body: buildReminderBody(ride),
+  };
+}
+
+function getReminderSchedulePlan(
+  ride: any,
+  identifier: string,
+  sentImmediateState: ImmediateReminderState,
+  now = new Date()
+): ReminderSchedulePlan | null {
+  const startDate = getRideStartDate(ride);
+  if (!startDate || startDate.getTime() <= now.getTime()) {
+    return null;
+  }
+
+  const reminderDate = new Date(
+    startDate.getTime() - REMINDER_LEAD_MINUTES * 60 * 1000
+  );
+  const startKey = String(startDate.getTime());
+
+  if (reminderDate.getTime() > now.getTime()) {
+    return {
+      triggerDate: reminderDate,
+      kind: "scheduled",
+      startKey,
+    };
+  }
+
+  if (sentImmediateState[identifier] === startKey) {
+    return null;
+  }
+
+  return {
+    triggerDate: new Date(now.getTime() + IMMEDIATE_REMINDER_DELAY_MS),
+    kind: "late",
+    startKey,
+  };
 }
 
 async function loadMissingBookedRides({
@@ -239,6 +379,8 @@ export async function clearRideReminderNotifications() {
         )
       )
   );
+
+  await saveImmediateReminderState({});
 }
 
 export async function syncRideReminderNotifications({
@@ -262,6 +404,8 @@ export async function syncRideReminderNotifications({
     bookings,
   });
   const existingIds = await getExistingReminderIds();
+  const immediateReminderState = await getImmediateReminderState();
+  const nextImmediateReminderState: ImmediateReminderState = {};
 
   await Promise.all(
     Array.from(existingIds).map((identifier) =>
@@ -270,36 +414,49 @@ export async function syncRideReminderNotifications({
   );
 
   for (const target of targets) {
-    const startDate = getRideStartDate(target.ride);
-    if (!startDate) {
+    const plan = getReminderSchedulePlan(
+      target.ride,
+      target.identifier,
+      immediateReminderState
+    );
+    if (!plan) {
       continue;
     }
 
-    const reminderDate = new Date(
-      startDate.getTime() - REMINDER_LEAD_MINUTES * 60 * 1000
+    const content = buildReminderNotificationContent(
+      target.ride,
+      plan.kind
     );
 
     await Notifications.scheduleNotificationAsync({
       identifier: target.identifier,
       content: {
-        title: buildReminderTitle(),
-        body: buildReminderBody(target.ride),
+        title: content.title,
+        body: content.body,
         sound: "default",
         data: {
           kind: REMINDER_KIND,
           type: REMINDER_KIND,
           rideId: Number(target.ride?.id),
           role: target.role,
+          promptLocation: "meetup",
+          reminderScheduleKind: plan.kind,
           screen: "/ride/[id]",
         },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: reminderDate,
+        date: plan.triggerDate,
         channelId: REMINDER_CHANNEL_ID,
       },
     });
+
+    if (plan.kind === "late") {
+      nextImmediateReminderState[target.identifier] = plan.startKey;
+    }
   }
+
+  await saveImmediateReminderState(nextImmediateReminderState);
 
   return true;
 }

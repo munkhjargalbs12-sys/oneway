@@ -124,8 +124,17 @@ export default function RootLayout() {
   }, [isPublicRoute]);
 
   useEffect(() => {
-    const receivedSubscription = Notifications.addNotificationReceivedListener(() => {
+    const receivedSubscription = Notifications.addNotificationReceivedListener((event) => {
       resetNotificationSoundState();
+
+      const data = event.notification.request.content.data || {};
+      const type = String(data?.type ?? "").toLowerCase();
+
+      if (
+        ["booking_approved", "booking_rejected", "ride_cancelled", "ride_started_auto"].includes(type)
+      ) {
+        void syncRideReminderNotificationsFromServer();
+      }
     });
 
     const responseSubscription =
@@ -140,12 +149,22 @@ export default function RootLayout() {
         const type = String(data?.type ?? "").toLowerCase();
         const reminderRole = String(data?.role ?? "").toLowerCase();
 
+        if (
+          ["ride_reminder", "booking_approved", "booking_rejected", "ride_cancelled", "ride_started_auto"].includes(type)
+        ) {
+          void syncRideReminderNotificationsFromServer();
+        }
+
         if (rideId && type === "ride_reminder") {
           router.push({
             pathname: "/ride/[id]",
             params: {
               id: String(rideId),
               role: reminderRole === "driver" ? "driver" : "rider",
+              promptLocation:
+                String(data?.promptLocation ?? "").toLowerCase() === "meetup"
+                  ? "meetup"
+                  : undefined,
             },
           });
           return;

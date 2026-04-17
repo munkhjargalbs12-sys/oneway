@@ -130,7 +130,10 @@ export default function RideCreationScreen() {
 
       router.replace({
         pathname: "/home",
-        params: { rideCreated: "true" },
+        params: {
+          rideCreated: "true",
+          locationReminder: "create",
+        },
       });
     } catch {
       Alert.alert("Алдаа", "Чиглэл үүсгэхэд алдаа гарлаа");

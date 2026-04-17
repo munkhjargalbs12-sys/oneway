@@ -15,10 +15,11 @@ import {
   getRideScope,
   type RideScope,
 } from "@/services/rideSearch";
+import { showLocationUsageReminder } from "@/services/locationUsageReminder";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 const seatImages: Record<number, any> = {
@@ -167,6 +168,7 @@ export default function RideListScreen() {
     scope?: string;
     refresh?: string;
     radiusM?: string;
+    locationReminder?: string;
     searchStartLat?: string;
     searchStartLng?: string;
     searchStartLabel?: string;
@@ -200,12 +202,14 @@ export default function RideListScreen() {
   const searchStartLabel = formatPointLabel(searchStart, readString(params.searchStartLabel));
   const searchEndLabel = formatPointLabel(searchEnd, readString(params.searchEndLabel));
   const refreshToken = readString(params.refresh) || "";
+  const locationReminder = readString(params.locationReminder) || "";
 
   const [rides, setRides] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bookedRideIds, setBookedRideIds] = useState<number[]>([]);
   const [bookingStatusByRide, setBookingStatusByRide] = useState<Record<number, string>>({});
   const [bookingStatusLabelByRide, setBookingStatusLabelByRide] = useState<Record<number, string>>({});
+  const locationReminderShownRef = useRef(false);
 
   const loadRides = useCallback(async () => {
     void refreshToken;
@@ -261,6 +265,48 @@ export default function RideListScreen() {
       loadRides();
     }, [loadRides])
   );
+
+  useEffect(() => {
+    if (!locationReminder || locationReminderShownRef.current) {
+      return;
+    }
+
+    locationReminderShownRef.current = true;
+
+    showLocationUsageReminder(locationReminder, () => {
+      router.replace({
+        pathname: "/rides",
+        params: {
+          scope: activeScope,
+          ...(refreshToken ? { refresh: refreshToken } : {}),
+          ...(searchStart
+            ? {
+                searchStartLat: String(searchStart.lat),
+                searchStartLng: String(searchStart.lng),
+              }
+            : {}),
+          ...(searchStartLabel ? { searchStartLabel } : {}),
+          ...(searchEnd
+            ? {
+                searchEndLat: String(searchEnd.lat),
+                searchEndLng: String(searchEnd.lng),
+              }
+            : {}),
+          ...(searchEndLabel ? { searchEndLabel } : {}),
+          radiusM: String(radiusMeters),
+        },
+      });
+    });
+  }, [
+    activeScope,
+    locationReminder,
+    radiusMeters,
+    refreshToken,
+    searchEnd,
+    searchEndLabel,
+    searchStart,
+    searchStartLabel,
+  ]);
 
   const searchSummary = useMemo(() => {
     if (!hasSearch) {

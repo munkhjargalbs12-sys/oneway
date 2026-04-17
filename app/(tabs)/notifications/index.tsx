@@ -10,6 +10,7 @@ import {
   sortNotificationsNewestFirst,
 } from "@/services/notificationUtils";
 import { playActionSuccessSound } from "@/services/notificationSound";
+import { syncRideReminderNotificationsFromServer } from "@/services/rideReminders";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -256,6 +257,7 @@ export default function NotificationsScreen() {
         )
       );
       void playActionSuccessSound();
+      void syncRideReminderNotificationsFromServer();
     } catch (error: any) {
       Alert.alert("Алдаа", error?.message || "Үйлдэл амжилтгүй.");
     } finally {

@@ -178,6 +178,7 @@ export default function RideSearchScreen() {
         searchEndLng: String(endPoint.lng),
         searchEndLabel: getDisplayLabel(endPoint, endText),
         radiusM: String(radiusMeters),
+        locationReminder: "search",
       },
     });
   }

@@ -51,7 +51,7 @@ function normalizeExpoPushToken(value: string | null | undefined) {
     : null;
 }
 
-export async function registerForPushNotificationsAsync() {
+async function ensureDefaultNotificationChannel() {
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {
       name: "OneWay Alerts",
@@ -61,18 +61,38 @@ export async function registerForPushNotificationsAsync() {
       sound: "default",
     });
   }
+}
+
+export async function getNotificationPermissionSettings() {
+  await ensureDefaultNotificationChannel();
+  return Notifications.getPermissionsAsync();
+}
+
+export async function areNotificationsEnabled() {
+  const settings = await getNotificationPermissionSettings();
+  return hasGrantedPermission(settings);
+}
+
+export async function ensureNotificationPermission() {
+  await ensureDefaultNotificationChannel();
+
+  const existing = await Notifications.getPermissionsAsync();
+  if (hasGrantedPermission(existing)) {
+    return existing;
+  }
+
+  return Notifications.requestPermissionsAsync();
+}
+
+export async function registerForPushNotificationsAsync() {
+  await ensureDefaultNotificationChannel();
 
   if (!Device.isDevice) {
     console.log("Push notifications require a physical device");
     return null;
   }
 
-  const existing = await Notifications.getPermissionsAsync();
-  let finalSettings = existing;
-
-  if (!hasGrantedPermission(existing)) {
-    finalSettings = await Notifications.requestPermissionsAsync();
-  }
+  const finalSettings = await ensureNotificationPermission();
 
   if (!hasGrantedPermission(finalSettings)) {
     console.log("Push notification permission was not granted");

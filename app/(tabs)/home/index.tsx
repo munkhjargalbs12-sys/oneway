@@ -11,7 +11,10 @@ import {
   getBookingStatusColor,
   getBookingStatusLabel,
 } from "@/services/bookingStatus";
-import { syncRideReminderNotifications } from "@/services/rideReminders";
+import {
+  syncRideReminderNotifications,
+  syncRideReminderNotificationsFromServer,
+} from "@/services/rideReminders";
 import {
   canReviewDriverRequestNotification,
   countUnreadNotifications,
@@ -20,6 +23,7 @@ import {
   sortNotificationsNewestFirst,
 } from "@/services/notificationUtils";
 import { playActionSuccessSound } from "@/services/notificationSound";
+import { showLocationUsageReminder } from "@/services/locationUsageReminder";
 import { shouldShowRideOnHome } from "@/services/rideTiming";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -84,15 +88,19 @@ function HomeScreen() {
   const createPulse = useRef(new Animated.Value(0)).current;
   const walletFloatLoopRef = useRef<Animated.CompositeAnimation | null>(null);
   const createPulseLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const locationReminderShownRef = useRef(false);
   const params = useLocalSearchParams<{
-  startLat?: string;
-  startLng?: string;
-  startLabel?: string;
-}>();
+    startLat?: string;
+    startLng?: string;
+    startLabel?: string;
+    rideCreated?: string;
+    locationReminder?: string;
+  }>();
 
-const startLat = params.startLat;
-const startLng = params.startLng;
-const startLabel = params.startLabel;
+  const startLat = params.startLat;
+  const startLng = params.startLng;
+  const startLabel = params.startLabel;
+  const locationReminder = params.locationReminder;
 
   const getRevealStyle = useCallback((value: Animated.Value, distance = 30) => ({
     opacity: value,
@@ -367,6 +375,25 @@ const startLabel = params.startLabel;
     loadHome();
   }, [loadHome]);
 
+  useEffect(() => {
+    if (!locationReminder || locationReminderShownRef.current) {
+      return;
+    }
+
+    locationReminderShownRef.current = true;
+
+    showLocationUsageReminder(locationReminder, () => {
+      router.replace({
+        pathname: "/home",
+        params: {
+          ...(startLat ? { startLat } : {}),
+          ...(startLng ? { startLng } : {}),
+          ...(startLabel ? { startLabel } : {}),
+        },
+      });
+    });
+  }, [locationReminder, startLabel, startLat, startLng]);
+
   useFocusEffect(
     useCallback(() => {
       void loadHome();
@@ -464,6 +491,7 @@ const startLabel = params.startLabel;
         });
 
         void playActionSuccessSound();
+        void syncRideReminderNotificationsFromServer();
         void loadHome();
       } catch (err: any) {
         Alert.alert("Алдаа", err?.message || "Үйлдэл амжилтгүй боллоо.");
@@ -1938,7 +1966,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
-
-
-
