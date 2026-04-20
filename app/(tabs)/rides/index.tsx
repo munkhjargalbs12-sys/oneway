@@ -16,6 +16,7 @@ import {
   type RideScope,
 } from "@/services/rideSearch";
 import { formatRideDate } from "@/services/rideDate";
+import { isRideBeforeToday } from "@/services/rideTiming";
 import { showLocationUsageReminder } from "@/services/locationUsageReminder";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -143,8 +144,7 @@ function sortRidesNewestFirst(first: any, second: any) {
 }
 
 function isRideUpcoming(ride: any) {
-  const timestamp = toRideTimestamp(ride);
-  return timestamp <= 0 || timestamp >= Date.now();
+  return !isRideBeforeToday(ride);
 }
 
 function getRideStatusLabel(status?: string | null) {
