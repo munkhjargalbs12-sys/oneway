@@ -6,6 +6,11 @@ export type AppUpdateCheckResult =
   | { status: "up-to-date"; message: string }
   | { status: "downloaded"; message: string };
 
+export type AppUpdateAvailabilityResult =
+  | { status: "unavailable"; message: string }
+  | { status: "up-to-date"; message: string }
+  | { status: "available"; message: string };
+
 export function getAppUpdateMetadata() {
   const appVersion =
     Constants.expoConfig?.version ||
@@ -32,6 +37,16 @@ export function getAppUpdateMetadata() {
 }
 
 export async function checkAndFetchAppUpdate(): Promise<AppUpdateCheckResult> {
+  const availability = await checkForAppUpdateAvailability();
+
+  if (availability.status !== "available") {
+    return availability;
+  }
+
+  return fetchAvailableAppUpdate();
+}
+
+export async function checkForAppUpdateAvailability(): Promise<AppUpdateAvailabilityResult> {
   if (__DEV__) {
     return {
       status: "unavailable",
@@ -61,6 +76,29 @@ export async function checkAndFetchAppUpdate(): Promise<AppUpdateCheckResult> {
     return {
       status: "up-to-date",
       message: "Шинэ update алга. Та хамгийн сүүлийн хувилбарыг ашиглаж байна.",
+    };
+  }
+
+  return {
+    status: "available",
+    message: "Шинэ хувилбар гарсан байна. Татаж суулгах уу?",
+  };
+}
+
+export async function fetchAvailableAppUpdate(): Promise<AppUpdateCheckResult> {
+  if (__DEV__) {
+    return {
+      status: "unavailable",
+      message:
+        "Dev mode дээр OTA update ажиллахгүй. Release APK эсвэл EAS build дээр туршина уу.",
+    };
+  }
+
+  if (!Updates.isEnabled) {
+    return {
+      status: "unavailable",
+      message:
+        "Энэ build дээр OTA update идэвхжээгүй байна. Шинэ APK build хийхдээ update config-аа хамт оруулна уу.",
     };
   }
 

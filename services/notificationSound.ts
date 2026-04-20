@@ -1,6 +1,7 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 
 let notificationPlayer: AudioPlayer | null = null;
+let rideReminderPlayer: AudioPlayer | null = null;
 let rideCreatedPlayer: AudioPlayer | null = null;
 let actionSuccessPlayer: AudioPlayer | null = null;
 let appReadyPlayer: AudioPlayer | null = null;
@@ -9,6 +10,7 @@ let hasPrimedUnreadBaseline = false;
 let hasPlayedAppReadyThisSession = false;
 let previousUnreadKeys = new Set<string>();
 let lastPlayedAt = 0;
+let lastRideReminderPlayedAt = 0;
 let lastRideCreatedPlayedAt = 0;
 let lastActionSuccessPlayedAt = 0;
 
@@ -26,14 +28,19 @@ function buildNotificationKey(item: any, index: number) {
   return `fallback:${index}:${createdAt}:${type}:${title}:${body}`;
 }
 
-function getUnreadNotificationKeys(list: any[]) {
-  if (!Array.isArray(list)) return new Set<string>();
+function getUnreadNotificationEntries(list: any[]) {
+  if (!Array.isArray(list)) return [];
 
-  return new Set(
-    list
-      .filter((item) => !item?.is_read)
-      .map((item, index) => buildNotificationKey(item, index))
-  );
+  return list
+    .filter((item) => !item?.is_read)
+    .map((item, index) => ({
+      item,
+      key: buildNotificationKey(item, index),
+    }));
+}
+
+function isRideReminderNotification(item: any) {
+  return String(item?.type ?? "").trim().toLowerCase() === "ride_reminder";
 }
 
 async function ensureAudioMode() {
@@ -63,6 +70,19 @@ async function ensureNotificationPlayer() {
   }
 
   return notificationPlayer;
+}
+
+async function ensureRideReminderPlayer() {
+  await ensureAudioMode();
+
+  if (!rideReminderPlayer) {
+    rideReminderPlayer = createAudioPlayer(
+      require("../assets/sounds/horn.wav")
+    );
+    rideReminderPlayer.volume = 0.9;
+  }
+
+  return rideReminderPlayer;
 }
 
 async function ensureRideCreatedPlayer() {
@@ -120,13 +140,32 @@ async function playNotificationSound() {
   }
 }
 
+async function playRideReminderSound() {
+  const now = Date.now();
+  if (now - lastRideReminderPlayedAt < 1200) {
+    return false;
+  }
+
+  lastRideReminderPlayedAt = now;
+
+  try {
+    const player = await ensureRideReminderPlayer();
+    await replayPlayer(player);
+    return true;
+  } catch (error) {
+    console.log("Ride reminder sound playback failed", error);
+    return false;
+  }
+}
+
 export function resetNotificationSoundState() {
   hasPrimedUnreadBaseline = false;
   previousUnreadKeys = new Set<string>();
 }
 
 export async function syncNotificationSound(list: any[]) {
-  const nextUnreadKeys = getUnreadNotificationKeys(list);
+  const nextUnreadEntries = getUnreadNotificationEntries(list);
+  const nextUnreadKeys = new Set(nextUnreadEntries.map((entry) => entry.key));
 
   if (!hasPrimedUnreadBaseline) {
     previousUnreadKeys = nextUnreadKeys;
@@ -134,14 +173,18 @@ export async function syncNotificationSound(list: any[]) {
     return false;
   }
 
-  const hasNewUnread = Array.from(nextUnreadKeys).some(
-    (key) => !previousUnreadKeys.has(key)
+  const newUnreadEntries = nextUnreadEntries.filter(
+    (entry) => !previousUnreadKeys.has(entry.key)
   );
 
   previousUnreadKeys = nextUnreadKeys;
 
-  if (!hasNewUnread) {
+  if (newUnreadEntries.length === 0) {
     return false;
+  }
+
+  if (newUnreadEntries.some((entry) => isRideReminderNotification(entry.item))) {
+    return await playRideReminderSound();
   }
 
   return await playNotificationSound();

@@ -15,6 +15,7 @@ import {
   getRideScope,
   type RideScope,
 } from "@/services/rideSearch";
+import { formatRideDate } from "@/services/rideDate";
 import { showLocationUsageReminder } from "@/services/locationUsageReminder";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -114,10 +115,36 @@ function getSeatIllustrationCount(availableSeats: number) {
 }
 
 function toRideTimestamp(ride: any) {
-  const dateValue = String(ride?.ride_date || "");
+  const dateValue = formatRideDate(ride?.ride_date, "");
+  if (!dateValue) return 0;
+
   const timeValue = String(ride?.start_time || "00:00").slice(0, 5);
   const timestamp = new Date(`${dateValue}T${timeValue}:00`).getTime();
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function toCreatedTimestamp(ride: any) {
+  const timestamp = new Date(String(ride?.created_at || ride?.createdAt || "")).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortRidesNewestFirst(first: any, second: any) {
+  const createdDelta = toCreatedTimestamp(second) - toCreatedTimestamp(first);
+  if (createdDelta !== 0) {
+    return createdDelta;
+  }
+
+  const idDelta = Number(second?.id || 0) - Number(first?.id || 0);
+  if (idDelta !== 0) {
+    return idDelta;
+  }
+
+  return toRideTimestamp(second) - toRideTimestamp(first);
+}
+
+function isRideUpcoming(ride: any) {
+  const timestamp = toRideTimestamp(ride);
+  return timestamp <= 0 || timestamp >= Date.now();
 }
 
 function getRideStatusLabel(status?: string | null) {
@@ -236,7 +263,8 @@ export default function RideListScreen() {
 
       const nextRides = (Array.isArray(ridePayload) ? ridePayload : [])
         .filter((ride) => (hasSearch ? true : getRideScope(ride) === activeScope))
-        .sort((first, second) => toRideTimestamp(first) - toRideTimestamp(second));
+        .filter(isRideUpcoming)
+        .sort(sortRidesNewestFirst);
 
       setRides(nextRides);
       setBookedRideIds(extractBookedRideIds(myBookings));
@@ -524,7 +552,7 @@ export default function RideListScreen() {
                   <View style={styles.driverMeta}>
                     <Text style={styles.driverName}>{ownerName}</Text>
                     <Text style={styles.dateText}>
-                      {item.ride_date || "-"} · {String(item.start_time || "-").slice(0, 5)}
+                      {formatRideDate(item.ride_date)} · {String(item.start_time || "-").slice(0, 5)}
                     </Text>
                   </View>
                 </View>

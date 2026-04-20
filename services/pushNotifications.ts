@@ -6,6 +6,7 @@ import { Platform } from "react-native";
 
 import { apiFetch } from "./apiClient";
 import { getToken } from "./authStorage";
+import { ensureNotificationChannels } from "./notificationChannels";
 
 const LAST_SYNCED_PUSH_TOKEN_KEY = "oneway_push_token_synced";
 
@@ -51,20 +52,8 @@ function normalizeExpoPushToken(value: string | null | undefined) {
     : null;
 }
 
-async function ensureDefaultNotificationChannel() {
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "OneWay Alerts",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 180, 250],
-      lightColor: "#C47B55",
-      sound: "default",
-    });
-  }
-}
-
 export async function getNotificationPermissionSettings() {
-  await ensureDefaultNotificationChannel();
+  await ensureNotificationChannels();
   return Notifications.getPermissionsAsync();
 }
 
@@ -74,7 +63,7 @@ export async function areNotificationsEnabled() {
 }
 
 export async function ensureNotificationPermission() {
-  await ensureDefaultNotificationChannel();
+  await ensureNotificationChannels();
 
   const existing = await Notifications.getPermissionsAsync();
   if (hasGrantedPermission(existing)) {
@@ -85,7 +74,7 @@ export async function ensureNotificationPermission() {
 }
 
 export async function registerForPushNotificationsAsync() {
-  await ensureDefaultNotificationChannel();
+  await ensureNotificationChannels();
 
   if (!Device.isDevice) {
     console.log("Push notifications require a physical device");

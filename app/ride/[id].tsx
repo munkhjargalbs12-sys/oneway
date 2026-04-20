@@ -11,6 +11,7 @@ import {
   ensureNotificationPermission,
   syncPushTokenWithBackend,
 } from "@/services/pushNotifications";
+import { formatRideDate } from "@/services/rideDate";
 import { getRideStartDate } from "@/services/rideTiming";
 import polyline from "@mapbox/polyline";
 import { router, useLocalSearchParams } from "expo-router";
@@ -770,9 +771,7 @@ export default function RideDetail() {
           .filter(Boolean)
       : [];
 
-  const rideDateText = ride?.ride_date
-    ? String(ride.ride_date).slice(0, 10)
-    : "Огноо байхгүй";
+  const rideDateText = formatRideDate(ride?.ride_date, "Огноо байхгүй");
   const ownerName = getRideOwnerName(ride);
   const routeTitle = `${getLocationLabel(ride?.start_location, "Эхлэх цэг тодорхойгүй")} → ${getLocationLabel(
     ride?.end_location,
@@ -817,7 +816,7 @@ export default function RideDetail() {
     : null;
   const rideStartDate = getRideStartDate(ride);
   const isMeetupWindowUpcoming =
-    Boolean(rideStartDate) && rideStartDate.getTime() > Date.now() && !meetupPresence;
+    rideStartDate ? rideStartDate.getTime() > Date.now() && !meetupPresence : false;
   const meetupInfoText = meetupPresence
     ? `Эхлэх цэгээс ${meetupPresence?.required_start_radius_meters ?? 20}м дотор ${Math.round(
         Number(meetupPresence?.required_dwell_seconds ?? 300) / 60

@@ -1,5 +1,10 @@
 import HeaderBackButton from "@/components/HeaderBackButton";
 import { AppFontFamily, AppTheme } from "@/constants/theme";
+import {
+  checkForAppUpdateAvailability,
+  fetchAvailableAppUpdate,
+  reloadToApplyUpdate,
+} from "@/services/appUpdate";
 import { apiFetch } from "@/services/apiClient";
 import { getToken } from "@/services/authStorage";
 import {
@@ -22,7 +27,7 @@ import {
 import * as Notifications from "expo-notifications";
 import { Stack, router, usePathname } from "expo-router";
 import React, { useCallback, useEffect } from "react";
-import { Text, TextInput, type StyleProp, type TextStyle } from "react-native";
+import { Alert, AppState, Text, TextInput, type StyleProp, type TextStyle } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 type StyledComponentWithDefaults<T> = T & {
@@ -33,6 +38,11 @@ type StyledComponentWithDefaults<T> = T & {
 
 const textComponent = Text as StyledComponentWithDefaults<typeof Text>;
 const textInputComponent = TextInput as StyledComponentWithDefaults<typeof TextInput>;
+const AUTO_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+
+let lastAutoUpdateCheckAt = 0;
+let autoUpdateCheckInFlight = false;
+let autoUpdatePromptVisible = false;
 
 textComponent.defaultProps = {
   ...textComponent.defaultProps,
@@ -50,6 +60,104 @@ export default function RootLayout() {
     pathname === "/onboarding" ||
     pathname === "/login" ||
     pathname === "/register";
+
+  const promptToApplyDownloadedUpdate = useCallback((message: string) => {
+    autoUpdatePromptVisible = true;
+    Alert.alert("Шинэчлэлт татагдлаа", message, [
+      {
+        text: "Дараа",
+        style: "cancel",
+        onPress: () => {
+          autoUpdatePromptVisible = false;
+        },
+      },
+      {
+        text: "Одоо шинэчлэх",
+        onPress: () => {
+          autoUpdatePromptVisible = false;
+          void reloadToApplyUpdate();
+        },
+      },
+    ]);
+  }, []);
+
+  const promptToDownloadUpdate = useCallback((message: string) => {
+    autoUpdatePromptVisible = true;
+    Alert.alert("Шинэ update гарлаа", message, [
+      {
+        text: "Дараа",
+        style: "cancel",
+        onPress: () => {
+          autoUpdatePromptVisible = false;
+        },
+      },
+      {
+        text: "Татах",
+        onPress: () => {
+          void (async () => {
+            try {
+              const result = await fetchAvailableAppUpdate();
+              if (result.status === "downloaded") {
+                promptToApplyDownloadedUpdate(result.message);
+                return;
+              }
+
+              Alert.alert("Апп шинэчлэлт", result.message, [
+                {
+                  text: "OK",
+                  onPress: () => {
+                    autoUpdatePromptVisible = false;
+                  },
+                },
+              ]);
+            } catch (err) {
+              console.log("Auto app update fetch failed", err);
+              const errorMessage =
+                err instanceof Error
+                  ? err.message
+                  : "Шинэчлэлт татах үед алдаа гарлаа.";
+              Alert.alert("Алдаа", errorMessage, [
+                {
+                  text: "OK",
+                  onPress: () => {
+                    autoUpdatePromptVisible = false;
+                  },
+                },
+              ]);
+            }
+          })();
+        },
+      },
+    ]);
+  }, [promptToApplyDownloadedUpdate]);
+
+  const checkForAppUpdate = useCallback(
+    async (force = false) => {
+      if (__DEV__ || autoUpdateCheckInFlight || autoUpdatePromptVisible) {
+        return;
+      }
+
+      const now = Date.now();
+      if (!force && now - lastAutoUpdateCheckAt < AUTO_UPDATE_CHECK_INTERVAL_MS) {
+        return;
+      }
+
+      autoUpdateCheckInFlight = true;
+      lastAutoUpdateCheckAt = now;
+
+      try {
+        const result = await checkForAppUpdateAvailability();
+        if (result.status === "available") {
+          promptToDownloadUpdate(result.message);
+        }
+      } catch (err) {
+        console.log("Auto app update check failed", err);
+      } finally {
+        autoUpdateCheckInFlight = false;
+      }
+    },
+    [promptToDownloadUpdate]
+  );
 
   const pollNotificationSound = useCallback(async () => {
     const token = await getToken();
@@ -83,6 +191,20 @@ export default function RootLayout() {
       console.log("Global ride reminder sync failed", err);
     }
   }, []);
+
+  useEffect(() => {
+    void checkForAppUpdate(true);
+
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        void checkForAppUpdate();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [checkForAppUpdate]);
 
   useEffect(() => {
     if (isPublicRoute) {
@@ -124,10 +246,10 @@ export default function RootLayout() {
   }, [isPublicRoute]);
 
   useEffect(() => {
-    const receivedSubscription = Notifications.addNotificationReceivedListener((event) => {
+    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
       resetNotificationSoundState();
 
-      const data = event.notification.request.content.data || {};
+      const data = notification.request.content.data || {};
       const type = String(data?.type ?? "").toLowerCase();
 
       if (

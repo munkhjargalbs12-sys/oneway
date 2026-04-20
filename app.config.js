@@ -14,11 +14,41 @@ const configuredChannel =
 const plugins = Array.isArray(baseExpoConfig.plugins)
   ? [...baseExpoConfig.plugins]
   : [];
+const notificationSoundFiles = ["./assets/sounds/horn.wav"];
 
 const hasPlugin = (name) =>
   plugins.some((plugin) =>
     Array.isArray(plugin) ? plugin[0] === name : plugin === name
   );
+
+const upsertPluginOptions = (name, options) => {
+  const index = plugins.findIndex((plugin) =>
+    Array.isArray(plugin) ? plugin[0] === name : plugin === name
+  );
+
+  if (index === -1) {
+    plugins.push([name, options]);
+    return;
+  }
+
+  const existing = plugins[index];
+  const existingOptions =
+    Array.isArray(existing) && existing[1] && typeof existing[1] === "object"
+      ? existing[1]
+      : {};
+  const existingSounds = Array.isArray(existingOptions.sounds)
+    ? existingOptions.sounds
+    : [];
+  const nextSounds = Array.isArray(options.sounds) ? options.sounds : [];
+
+  const nextOptions = {
+    ...existingOptions,
+    ...options,
+    sounds: Array.from(new Set([...existingSounds, ...nextSounds])),
+  };
+
+  plugins[index] = [name, nextOptions];
+};
 
 if (!hasPlugin("expo-updates")) {
   plugins.push("expo-updates");
@@ -28,9 +58,9 @@ if (!hasPlugin("expo-audio")) {
   plugins.push("expo-audio");
 }
 
-if (!hasPlugin("expo-notifications")) {
-  plugins.push("expo-notifications");
-}
+upsertPluginOptions("expo-notifications", {
+  sounds: notificationSoundFiles,
+});
 
 module.exports = {
   expo: {

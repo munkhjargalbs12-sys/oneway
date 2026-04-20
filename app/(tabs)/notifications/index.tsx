@@ -169,6 +169,7 @@ export default function NotificationsScreen() {
   const [items, setItems] = useState<any[]>([]);
   const [userById, setUserById] = useState<Record<number, any>>({});
   const [actionLoading, setActionLoading] = useState<Record<number, NotificationAction | null>>({});
+  const [hideLoadingId, setHideLoadingId] = useState<number | null>(null);
 
   const isGenericName = (value: any) => {
     const normalized = String(value || "").trim().toLowerCase();
@@ -219,6 +220,34 @@ export default function NotificationsScreen() {
   const markRead = async (id: number) => {
     await apiFetch(`/notifications/${id}/read`, { method: "PATCH" });
     load();
+  };
+
+  const hideNotification = (item: any) => {
+    const notificationId = Number(item?.id);
+    if (!Number.isFinite(notificationId)) return;
+
+    Alert.alert(
+      "Мэдэгдэл устгах уу?",
+      "Мэдэгдэл манай датанд хэвээр үлдэнэ. Зөвхөн таны notification жагсаалтаас харагдахгүй болно.",
+      [
+        { text: "Болих", style: "cancel" },
+        {
+          text: "Устгах",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setHideLoadingId(notificationId);
+              await apiFetch(`/notifications/${notificationId}`, { method: "DELETE" });
+              setItems((prev) => prev.filter((notification) => Number(notification?.id) !== notificationId));
+            } catch (error: any) {
+              Alert.alert("Алдаа", error?.message || "Мэдэгдлийг нууж чадсангүй.");
+            } finally {
+              setHideLoadingId(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const resolveBookingId = (item: any): number | null => getNormalizedBookingId(item);
@@ -336,6 +365,19 @@ export default function NotificationsScreen() {
                 <Text style={styles.name}>{displayName}</Text>
                 <Text style={styles.title}>{item.title}</Text>
               </View>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                disabled={hideLoadingId === notificationId}
+                style={[styles.hideButton, hideLoadingId === notificationId && styles.hideButtonDisabled]}
+                onPress={(event) => {
+                  event.stopPropagation?.();
+                  hideNotification(item);
+                }}
+              >
+                <Text style={styles.hideButtonText}>
+                  {hideLoadingId === notificationId ? "..." : "Устгах"}
+                </Text>
+              </TouchableOpacity>
               {unread ? <View style={styles.unreadDot} /> : null}
             </View>
 
@@ -500,6 +542,17 @@ const styles = StyleSheet.create({
   cardTopContent: { flex: 1 },
   cardHeadingRow: { flexDirection: "row", alignItems: "flex-start" },
   cardHeadingText: { flex: 1 },
+  hideButton: {
+    borderRadius: AppTheme.radius.pill,
+    borderWidth: 1,
+    borderColor: "#f0c8bd",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 10,
+    backgroundColor: "#fff7f4",
+  },
+  hideButtonDisabled: { opacity: 0.55 },
+  hideButtonText: { color: AppTheme.colors.danger, fontSize: 11, fontWeight: "700" },
   unreadDot: { width: 10, height: 10, borderRadius: 999, backgroundColor: AppTheme.colors.gold, marginTop: 6, marginLeft: 10 },
   name: { color: AppTheme.colors.textMuted, fontSize: 13, fontWeight: "600", marginBottom: 3 },
   title: { color: AppTheme.colors.text, fontSize: 18, lineHeight: 23, fontWeight: "700", fontFamily: AppFontFamily },

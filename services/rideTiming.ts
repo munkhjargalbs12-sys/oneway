@@ -1,3 +1,5 @@
+import { formatRideDate } from "./rideDate";
+
 const COMPLETED_RIDE_STATUSES = new Set(["completed", "cancelled", "canceled"]);
 
 function normalizeTime(value?: string | null) {
@@ -8,7 +10,7 @@ function normalizeTime(value?: string | null) {
 }
 
 export function getRideStartDate(ride: any) {
-  const rideDate = String(ride?.ride_date ?? "").trim();
+  const rideDate = formatRideDate(ride?.ride_date, "");
   if (!rideDate) return null;
 
   const date = new Date(`${rideDate}T${normalizeTime(ride?.start_time)}`);

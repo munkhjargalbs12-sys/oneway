@@ -19,6 +19,78 @@ import { apiFetch } from "../../../services/apiClient";
 
 const weekdays = ["Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан"];
 const WEEKDAY_MAP = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const DEFAULT_START_DELAY_MINUTES = 15;
+const MIN_START_LEAD_MINUTES = 5;
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function getDefaultRideStartDate() {
+  const value = new Date(Date.now() + DEFAULT_START_DELAY_MINUTES * 60 * 1000);
+  value.setSeconds(0, 0);
+  return value;
+}
+
+function formatLocalDate(value: Date) {
+  return [
+    value.getFullYear(),
+    padDatePart(value.getMonth() + 1),
+    padDatePart(value.getDate()),
+  ].join("-");
+}
+
+function formatLocalTime(value: Date) {
+  return [padDatePart(value.getHours()), padDatePart(value.getMinutes())].join(":");
+}
+
+function buildRideStartDate(rideDate: string, startTime: string) {
+  const dateParts = rideDate.split("-").map((part) => Number(part));
+  const timeParts = startTime.split(":").map((part) => Number(part));
+  const [year, month, day] = dateParts;
+  const [hour, minute] = timeParts;
+
+  if (
+    dateParts.length !== 3 ||
+    timeParts.length < 2 ||
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute)
+  ) {
+    return null;
+  }
+
+  const value = new Date(year, month - 1, day, hour, minute, 0, 0);
+  if (
+    Number.isNaN(value.getTime()) ||
+    value.getFullYear() !== year ||
+    value.getMonth() !== month - 1 ||
+    value.getDate() !== day ||
+    value.getHours() !== hour ||
+    value.getMinutes() !== minute
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function getRideTimeValidationMessage(rideDate: string, startTime: string, now = new Date()) {
+  const rideStartDate = buildRideStartDate(rideDate, startTime);
+
+  if (!rideStartDate) {
+    return "Огноо эсвэл цагийн мэдээлэл буруу байна. Дахин сонгоно уу.";
+  }
+
+  const minimumStartDate = new Date(now.getTime() + MIN_START_LEAD_MINUTES * 60 * 1000);
+  if (rideStartDate.getTime() < minimumStartDate.getTime()) {
+    return `Эхлэх цаг өнгөрсөн эсвэл хэт ойрхон байна. Одоо цагаас дор хаяж ${MIN_START_LEAD_MINUTES} минутын дараах цаг сонгоно уу.`;
+  }
+
+  return null;
+}
 
 export default function RideCreationScreen() {
   const params = useLocalSearchParams();
@@ -49,8 +121,8 @@ export default function RideCreationScreen() {
   const [endLocationName, setEndLocationName] = useState(
     typeof endLabelParam === "string" ? endLabelParam : ""
   );
-  const [date, setDate] = useState(new Date());
-  const [time, setTime] = useState(new Date());
+  const [date, setDate] = useState(getDefaultRideStartDate);
+  const [time, setTime] = useState(getDefaultRideStartDate);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([]);
@@ -68,11 +140,8 @@ export default function RideCreationScreen() {
     );
   };
 
-  const rideDate = date.toISOString().split("T")[0];
-  const startTime = time.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const rideDate = formatLocalDate(date);
+  const startTime = formatLocalTime(time);
 
   const createRideOnBackend = async () => {
     try {
@@ -118,6 +187,12 @@ export default function RideCreationScreen() {
       return;
     }
 
+    const timeValidationMessage = getRideTimeValidationMessage(rideDate, startTime);
+    if (timeValidationMessage) {
+      Alert.alert("Цагийн тохиргоо буруу", timeValidationMessage);
+      return;
+    }
+
     try {
       if (!vehicleId) {
         Alert.alert("Алдаа", "Машин бүртгэгдээгүй байна. Машин бүртгэнэ үү.");
@@ -135,8 +210,11 @@ export default function RideCreationScreen() {
           locationReminder: "create",
         },
       });
-    } catch {
-      Alert.alert("Алдаа", "Чиглэл үүсгэхэд алдаа гарлаа");
+    } catch (error: any) {
+      Alert.alert(
+        "Алдаа",
+        String(error?.message || "").trim() || "Чиглэл үүсгэхэд алдаа гарлаа"
+      );
     }
   };
 
@@ -302,6 +380,7 @@ export default function RideCreationScreen() {
             value={date}
             mode="date"
             display="default"
+            minimumDate={new Date()}
             onChange={(_, value) => {
               setShowDatePicker(false);
               if (value) setDate(value);

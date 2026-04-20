@@ -3,11 +3,17 @@ import * as Notifications from "expo-notifications";
 
 import { apiFetch } from "./apiClient";
 import { getToken } from "./authStorage";
+import {
+  ensureRideReminderNotificationChannel,
+  RIDE_REMINDER_NOTIFICATION_CHANNEL_ID,
+  RIDE_REMINDER_NOTIFICATION_SOUND,
+} from "./notificationChannels";
 import { getRideStartDate } from "./rideTiming";
 
 const REMINDER_PREFIX = "oneway-ride-reminder";
 const REMINDER_KIND = "ride_reminder";
-const REMINDER_CHANNEL_ID = "default";
+const REMINDER_CHANNEL_ID = RIDE_REMINDER_NOTIFICATION_CHANNEL_ID;
+const REMINDER_SOUND = RIDE_REMINDER_NOTIFICATION_SOUND;
 const REMINDER_LEAD_MINUTES = 10;
 const IMMEDIATE_REMINDER_DELAY_MS = 2000;
 const IMMEDIATE_REMINDER_STATE_KEY = "oneway_ride_reminder_immediate_state";
@@ -397,6 +403,8 @@ export async function syncRideReminderNotifications({
     return false;
   }
 
+  await ensureRideReminderNotificationChannel();
+
   const fetchedBookedRides = await loadMissingBookedRides({ allRides, myRides, bookings });
   const targets = buildReminderTargets({
     allRides: [...extractRideList(allRides), ...fetchedBookedRides],
@@ -433,7 +441,7 @@ export async function syncRideReminderNotifications({
       content: {
         title: content.title,
         body: content.body,
-        sound: "default",
+        sound: REMINDER_SOUND,
         data: {
           kind: REMINDER_KIND,
           type: REMINDER_KIND,

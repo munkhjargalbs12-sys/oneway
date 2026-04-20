@@ -15,6 +15,7 @@ import {
   syncRideReminderNotifications,
   syncRideReminderNotificationsFromServer,
 } from "@/services/rideReminders";
+import { formatRideDate } from "@/services/rideDate";
 import {
   canReviewDriverRequestNotification,
   countUnreadNotifications,
@@ -716,172 +717,7 @@ function HomeScreen() {
             </LinearGradient>
             </Animated.View>
 
-            {bookedRideList.length > 0 ? (
-              <Animated.View style={getRevealStyle(sectionAnimations[1], 28)}>
-              <View style={styles.premiumSectionCard}>
-                <Text style={styles.premiumSectionEyebrow}>Захиалгууд</Text>
-                <Text style={styles.premiumSectionTitle}>
-                  Таны сүүлийн захиалгууд
-                </Text>
-                <Text style={styles.premiumSectionText}>
-                  Баталгаажсан, хүлээгдэж буй, эсвэл татгалзсан төлөвөө эндээс
-                  шууд харна.
-                </Text>
-
-                <View style={styles.premiumBookedScrollCard}>
-                  <ScrollView
-                    nestedScrollEnabled
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.bookedScrollContent}
-                  >
-                    {bookedRideList.map((ride: any) => {
-                      const rideId = Number(ride?.id);
-                      const bookingStatus = String(
-                        ride?.booking_status || bookingStatusByRide[rideId] || ""
-                      ).toLowerCase();
-                      const bookingStatusLabel =
-                        ride?.booking_status_label ||
-                        bookingStatusLabelByRide[rideId] ||
-                        getBookingStatusLabel(bookingStatus);
-
-                      return (
-                        <TouchableOpacity
-                          key={String(ride.id)}
-                          style={styles.premiumBookedRideCard}
-                          onPress={() =>
-                            router.push({
-                              pathname: "/ride/[id]",
-                              params: { id: String(ride.id), role: "rider" },
-                            })
-                          }
-                        >
-                          <Image
-                            source={getRideAvatarSource(ride.avatar_id)}
-                            style={styles.bookedAvatar}
-                          />
-
-                          <View style={styles.bookedInfo}>
-                            {getRideOwnerName(ride) ? (
-                              <Text style={styles.bookedName}>
-                                {getRideOwnerName(ride)}
-                              </Text>
-                            ) : null}
-                            <Text style={styles.bookedDate}>
-                              Огноо: {ride.ride_date || "-"}
-                            </Text>
-                            <Text style={styles.bookedTime}>
-                              Цаг: {ride.start_time || "-"}
-                            </Text>
-                            <Text style={styles.bookedEnd} numberOfLines={1}>
-                              Очих газар:{" "}
-                              {ride.end_location || "Тодорхойгүй"}
-                            </Text>
-                            <Text style={styles.bookedPrice}>
-                              1 суудал: {ride.price ?? 0}₮
-                            </Text>
-                            <Text
-                              style={[
-                                styles.bookedBadge,
-                                { color: getBookingStatusColor(bookingStatus) },
-                              ]}
-                            >
-                              {bookingStatusLabel}
-                            </Text>
-                          </View>
-
-                          <Image
-                            source={
-                              seatImages[getAvailableSeats(ride)] || seatImages[1]
-                            }
-                            style={styles.bookedSeatImage}
-                          />
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              </View>
-              </Animated.View>
-            ) : (
-              <Animated.View style={getRevealStyle(sectionAnimations[1], 28)}>
-              <View style={styles.premiumEmptyStateCard}>
-                <Text style={styles.premiumEmptyStateTitle}>
-                  Захиалга хараахан алга
-                </Text>
-                <Text style={styles.premiumEmptyStateText}>
-                  Та одоогоор чиглэлд захиалга өгөөгүй байна.
-                </Text>
-              </View>
-              </Animated.View>
-            )}
-
-            {activeRide ? (
-              <Animated.View style={getRevealStyle(sectionAnimations[2], 34)}>
-              <TouchableOpacity
-                style={styles.premiumActiveCard}
-                onPress={() => router.push(`/ride/${activeRide.id}`)}
-              >
-                <Text style={styles.premiumSectionEyebrow}>Идэвхтэй</Text>
-                <View style={styles.cardHeader}>
-                  <Image source={icons.ways} style={styles.cardIcon} />
-                  <Text style={styles.premiumSectionTitle}>
-                    Таны аялалын зам
-                  </Text>
-                </View>
-                <Text style={styles.premiumSectionText}>
-                  Одоо явж буй эсвэл хамгийн сүүлд үүсгэсэн маршрутаа нээж
-                  дэлгэрэнгүйг шалгана.
-                </Text>
-
-                <View style={styles.activeContentRow}>
-                  <View style={styles.activeInfo}>
-                    {getRideOwnerName(activeRide) ? (
-                      <Text style={styles.activeName}>
-                        {getRideOwnerName(activeRide)}
-                      </Text>
-                    ) : null}
-                    <Text style={styles.activeDate}>
-                      Огноо: {activeRide.ride_date || "-"}
-                    </Text>
-                    <Text style={styles.activeTime}>
-                      Цаг: {activeRide.start_time || "-"}
-                    </Text>
-                    <Text style={styles.activeEnd} numberOfLines={2}>
-                      Очих газар:{" "}
-                      {activeRide.end_location ??
-                        activeRide.to_location ??
-                        "Тодорхойгүй"}
-                    </Text>
-                    <Text style={styles.activePrice}>
-                      1 суудал: {activeRide.price ?? 0}₮
-                    </Text>
-                  </View>
-
-                  <View style={styles.premiumSeatCard}>
-                    <Image
-                      source={
-                        seatImages[getAvailableSeats(activeRide)] || seatImages[1]
-                      }
-                      style={styles.activeSeatImage}
-                    />
-                  </View>
-                </View>
-              </TouchableOpacity>
-              </Animated.View>
-            ) : (
-              <Animated.View style={getRevealStyle(sectionAnimations[2], 34)}>
-              <View style={styles.premiumEmptyStateCard}>
-                <Text style={styles.premiumEmptyStateTitle}>
-                  Идэвхтэй аялал алга
-                </Text>
-                <Text style={styles.premiumEmptyStateText}>
-                  Шинэ чиглэл үүсгээд маршрутаа бэлдэж эхлээрэй.
-                </Text>
-              </View>
-              </Animated.View>
-            )}
-
-            <Animated.View style={getRevealStyle(sectionAnimations[3], 40)}>
+            <Animated.View style={getRevealStyle(sectionAnimations[1], 28)}>
             <View style={styles.premiumSectionCard}>
               <Text style={styles.premiumSectionEyebrow}>Чиглэл үүсгэх</Text>
             
@@ -936,6 +772,172 @@ function HomeScreen() {
               </Animated.View>
             </View>
             </Animated.View>
+
+            {bookedRideList.length > 0 ? (
+              <Animated.View style={getRevealStyle(sectionAnimations[2], 34)}>
+              <View style={styles.premiumSectionCard}>
+                <Text style={styles.premiumSectionEyebrow}>Захиалгууд</Text>
+                <Text style={styles.premiumSectionTitle}>
+                  Таны сүүлийн захиалгууд
+                </Text>
+                <Text style={styles.premiumSectionText}>
+                  Баталгаажсан, хүлээгдэж буй, эсвэл татгалзсан төлөвөө эндээс
+                  шууд харна.
+                </Text>
+
+                <View style={styles.premiumBookedScrollCard}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.bookedScrollContent}
+                  >
+                    {bookedRideList.map((ride: any) => {
+                      const rideId = Number(ride?.id);
+                      const bookingStatus = String(
+                        ride?.booking_status || bookingStatusByRide[rideId] || ""
+                      ).toLowerCase();
+                      const bookingStatusLabel =
+                        ride?.booking_status_label ||
+                        bookingStatusLabelByRide[rideId] ||
+                        getBookingStatusLabel(bookingStatus);
+
+                      return (
+                        <TouchableOpacity
+                          key={String(ride.id)}
+                          style={styles.premiumBookedRideCard}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/ride/[id]",
+                              params: { id: String(ride.id), role: "rider" },
+                            })
+                          }
+                        >
+                          <Image
+                            source={getRideAvatarSource(ride.avatar_id)}
+                            style={styles.bookedAvatar}
+                          />
+
+                          <View style={styles.bookedInfo}>
+                            {getRideOwnerName(ride) ? (
+                              <Text style={styles.bookedName}>
+                                {getRideOwnerName(ride)}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.bookedDate}>
+                              Огноо: {formatRideDate(ride.ride_date)}
+                            </Text>
+                            <Text style={styles.bookedTime}>
+                              Цаг: {ride.start_time || "-"}
+                            </Text>
+                            <Text style={styles.bookedEnd} numberOfLines={1}>
+                              Очих газар:{" "}
+                              {ride.end_location || "Тодорхойгүй"}
+                            </Text>
+                            <Text style={styles.bookedPrice}>
+                              1 суудал: {ride.price ?? 0}₮
+                            </Text>
+                            <Text
+                              style={[
+                                styles.bookedBadge,
+                                { color: getBookingStatusColor(bookingStatus) },
+                              ]}
+                            >
+                              {bookingStatusLabel}
+                            </Text>
+                          </View>
+
+                          <Image
+                            source={
+                              seatImages[getAvailableSeats(ride)] || seatImages[1]
+                            }
+                            style={styles.bookedSeatImage}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+              </Animated.View>
+            ) : (
+              <Animated.View style={getRevealStyle(sectionAnimations[2], 34)}>
+              <View style={styles.premiumEmptyStateCard}>
+                <Text style={styles.premiumEmptyStateTitle}>
+                  Захиалга хараахан алга
+                </Text>
+                <Text style={styles.premiumEmptyStateText}>
+                  Та одоогоор чиглэлд захиалга өгөөгүй байна.
+                </Text>
+              </View>
+              </Animated.View>
+            )}
+
+            {activeRide ? (
+              <Animated.View style={getRevealStyle(sectionAnimations[3], 40)}>
+              <TouchableOpacity
+                style={styles.premiumActiveCard}
+                onPress={() => router.push(`/ride/${activeRide.id}`)}
+              >
+                <Text style={styles.premiumSectionEyebrow}>Идэвхтэй</Text>
+                <View style={styles.cardHeader}>
+                  <Image source={icons.ways} style={styles.cardIcon} />
+                  <Text style={styles.premiumSectionTitle}>
+                    Таны аялалын зам
+                  </Text>
+                </View>
+                <Text style={styles.premiumSectionText}>
+                  Одоо явж буй эсвэл хамгийн сүүлд үүсгэсэн маршрутаа нээж
+                  дэлгэрэнгүйг шалгана.
+                </Text>
+
+                <View style={styles.activeContentRow}>
+                  <View style={styles.activeInfo}>
+                    {getRideOwnerName(activeRide) ? (
+                      <Text style={styles.activeName}>
+                        {getRideOwnerName(activeRide)}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.activeDate}>
+                      Огноо: {formatRideDate(activeRide.ride_date)}
+                    </Text>
+                    <Text style={styles.activeTime}>
+                      Цаг: {activeRide.start_time || "-"}
+                    </Text>
+                    <Text style={styles.activeEnd} numberOfLines={2}>
+                      Очих газар:{" "}
+                      {activeRide.end_location ??
+                        activeRide.to_location ??
+                        "Тодорхойгүй"}
+                    </Text>
+                    <Text style={styles.activePrice}>
+                      1 суудал: {activeRide.price ?? 0}₮
+                    </Text>
+                  </View>
+
+                  <View style={styles.premiumSeatCard}>
+                    <Image
+                      source={
+                        seatImages[getAvailableSeats(activeRide)] || seatImages[1]
+                      }
+                      style={styles.activeSeatImage}
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              <Animated.View style={getRevealStyle(sectionAnimations[3], 40)}>
+              <View style={styles.premiumEmptyStateCard}>
+                <Text style={styles.premiumEmptyStateTitle}>
+                  Идэвхтэй аялал алга
+                </Text>
+                <Text style={styles.premiumEmptyStateText}>
+                  Шинэ чиглэл үүсгээд маршрутаа бэлдэж эхлээрэй.
+                </Text>
+              </View>
+              </Animated.View>
+            )}
+
           </View>
         </ScrollView>
         <Modal
@@ -1066,6 +1068,47 @@ function HomeScreen() {
                 </TouchableOpacity>
           ))}
         </View>
+        <TouchableOpacity
+          style={styles.pickupBtn}
+          onPress={() =>
+            router.push({
+              pathname: "/location/map",
+              params: { returnTo: "home" },
+            })
+          }
+        >
+          <View style={styles.ctaButtonRow}>
+            <AppIconBadge name="pin-drop" theme="accent" />
+            <Text style={styles.pickupText}>Шинээр чиглэл үүсгэх</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.createBtn,
+            (!startLat || !startLng) && { backgroundColor: "#94a3b8" }
+          ]}
+          onPress={() => {
+            if (!startLat || !startLng) {
+              alert("Эхлээд замын байршлаа сонгоно уу");
+              return;
+            }
+
+              router.push({
+                pathname: "/ride/create/map",
+                params: {
+                  startLat,
+                  startLng,
+                  ...(startLabel ? { startLabel } : {}),
+                },
+              });
+            }}
+        >
+          <View style={styles.ctaButtonRow}>
+            <AppIconBadge name="route" theme="light" />
+            <Text style={styles.createBtnText}>Очих байршилаа оруулна уу</Text>
+          </View>
+        </TouchableOpacity>
+
         {bookedRideList.length > 0 && (
           <View style={styles.bookedWrap}>
             <Text style={styles.bookedTitle}>
@@ -1106,7 +1149,7 @@ function HomeScreen() {
                     {getRideOwnerName(ride) ? (
                       <Text style={styles.bookedName}>{getRideOwnerName(ride)}</Text>
                     ) : null}
-                    <Text style={styles.bookedDate}>Огноо: {ride.ride_date || "-"}</Text>
+                    <Text style={styles.bookedDate}>Огноо: {formatRideDate(ride.ride_date)}</Text>
                     <Text style={styles.bookedTime}>⏰ {ride.start_time || "-"}</Text>
                     <Text style={styles.bookedEnd} numberOfLines={1}>
                       📍 Очих газар: {ride.end_location || "Тодорхойгүй"}
@@ -1161,7 +1204,7 @@ function HomeScreen() {
                   <Text style={styles.activeName}>{getRideOwnerName(activeRide)}</Text>
                 ) : null}
                 <Text style={styles.activeDate}>
-                  Огноо: {activeRide.ride_date || "-"}
+                  Огноо: {formatRideDate(activeRide.ride_date)}
                 </Text>
                 <Text style={styles.activeTime}>⏰ {activeRide.start_time || "-"}</Text>
                 <Text style={styles.activeEnd} numberOfLines={2}>
@@ -1186,47 +1229,6 @@ function HomeScreen() {
             style={styles.emptyStateCard}
           />
         )}
-
-        <TouchableOpacity
-          style={styles.pickupBtn}
-          onPress={() =>
-            router.push({
-              pathname: "/location/map",
-              params: { returnTo: "home" },
-            })
-          }
-        >
-          <View style={styles.ctaButtonRow}>
-            <AppIconBadge name="pin-drop" theme="accent" />
-            <Text style={styles.pickupText}>Шинээр чиглэл үүсгэх</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.createBtn,
-            (!startLat || !startLng) && { backgroundColor: "#94a3b8" }
-          ]}
-          onPress={() => {
-            if (!startLat || !startLng) {
-              alert("Эхлээд замын байршлаа сонгоно уу");
-              return;
-            }
-
-              router.push({
-                pathname: "/ride/create/map",
-                params: {
-                  startLat,
-                  startLng,
-                  ...(startLabel ? { startLabel } : {}),
-                },
-              });
-            }}
-        >
-          <View style={styles.ctaButtonRow}>
-            <AppIconBadge name="route" theme="light" />
-            <Text style={styles.createBtnText}>Очих байршилаа оруулна уу</Text>
-          </View>
-        </TouchableOpacity>
 
         </LinearGradient>
         </View>

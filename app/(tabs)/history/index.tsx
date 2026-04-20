@@ -7,11 +7,12 @@ import {
   extractBookingStatusLabelByRide,
   getBookingStatusLabel,
 } from "@/services/bookingStatus";
+import { formatRideDate } from "@/services/rideDate";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 type HistoryEntryType = "created" | "booked";
 
@@ -27,10 +28,41 @@ type HistoryRide = {
   _entryType: HistoryEntryType;
 };
 
+function getRideSortTimestamp(ride: HistoryRide) {
+  const date = formatRideDate(ride.ride_date, "");
+  if (!date) return 0;
+
+  const time = String(ride.start_time || "00:00").slice(0, 5);
+  const timestamp = new Date(`${date}T${time}:00`).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function sortByRideTime(a: HistoryRide, b: HistoryRide) {
-  const aTs = new Date(`${a.ride_date || ""} ${a.start_time || ""}`).getTime();
-  const bTs = new Date(`${b.ride_date || ""} ${b.start_time || ""}`).getTime();
-  return bTs - aTs;
+  return getRideSortTimestamp(b) - getRideSortTimestamp(a);
+}
+
+function toRideId(value: unknown) {
+  const id = Number(value);
+  return Number.isFinite(id) ? id : null;
+}
+
+function getAllBookedRideIds(payload: any) {
+  const entries = Array.isArray(payload?.bookings) ? payload.bookings : [];
+  const ids = entries
+    .map((entry: any) => toRideId(entry?.ride_id ?? entry?.ride?.id ?? entry?.id))
+    .filter((id: number | null): id is number => id !== null);
+
+  return Array.from(new Set([...extractBookedRideIds(payload), ...ids]));
+}
+
+function canHideHistoryEntry(ride: HistoryRide) {
+  const status = String(ride.status || "").toLowerCase();
+  if (["completed", "cancelled", "canceled"].includes(status)) {
+    return true;
+  }
+
+  const timestamp = getRideSortTimestamp(ride);
+  return timestamp > 0 && timestamp < Date.now();
 }
 
 function buildHistoryRides(
@@ -40,7 +72,7 @@ function buildHistoryRides(
 ): HistoryRide[] {
   const myCreated = Array.isArray(myCreatedPayload) ? myCreatedPayload : [];
   const allRides = Array.isArray(allRidesPayload) ? allRidesPayload : [];
-  const bookedIds = extractBookedRideIds(myBookingsPayload);
+  const bookedIds = getAllBookedRideIds(myBookingsPayload);
   const bookingStatusByRide = extractBookingStatusByRide(myBookingsPayload);
   const bookingStatusLabelByRide = extractBookingStatusLabelByRide(myBookingsPayload);
 
@@ -91,9 +123,10 @@ function getResolvedStatusLabel(entry: HistoryRide) {
 }
 
 function getMonthLabel(dateValue?: string) {
-  if (!dateValue) return "Огноо тодорхойгүй";
+  const displayDate = formatRideDate(dateValue, "");
+  if (!displayDate) return "Огноо тодорхойгүй";
 
-  const date = new Date(dateValue);
+  const date = new Date(`${displayDate}T12:00:00`);
   if (Number.isNaN(date.getTime())) return "Огноо тодорхойгүй";
 
   return date.toLocaleDateString("mn-MN", {
@@ -123,6 +156,7 @@ function getStatusTone(label: string) {
 export default function RideHistory() {
   const [rides, setRides] = useState<HistoryRide[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hidingRideId, setHidingRideId] = useState<number | null>(null);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -160,6 +194,34 @@ export default function RideHistory() {
 
   const createdCount = useMemo(() => rides.filter((ride) => ride._entryType === "created").length, [rides]);
   const bookedCount = useMemo(() => rides.filter((ride) => ride._entryType === "booked").length, [rides]);
+
+  const hideHistoryEntry = useCallback((ride: HistoryRide) => {
+    const rideId = Number(ride?.id);
+    if (!Number.isFinite(rideId)) return;
+
+    Alert.alert(
+      "Түүхээс устгах уу?",
+      "Энэ бичлэг манай датанд хэвээр үлдэнэ. Зөвхөн таны түүх дээр харагдахгүй болно.",
+      [
+        { text: "Болих", style: "cancel" },
+        {
+          text: "Устгах",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setHidingRideId(rideId);
+              await apiFetch(`/rides/${rideId}/history`, { method: "DELETE" });
+              setRides((prev) => prev.filter((entry) => Number(entry.id) !== rideId));
+            } catch (error: any) {
+              Alert.alert("Алдаа", error?.message || "Түүхээс нууж чадсангүй.");
+            } finally {
+              setHidingRideId(null);
+            }
+          },
+        },
+      ]
+    );
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -225,12 +287,29 @@ export default function RideHistory() {
                   <Text style={styles.month}>{getMonthLabel(item.ride_date)}</Text>
                   <Text style={styles.title}>{item.end_location || "Очих газар тодорхойгүй"}</Text>
                 </View>
-                <View style={styles.priceChip}>
-                  <Text style={styles.priceText}>{(item.price ?? 0).toLocaleString()}₮</Text>
+                <View style={styles.cardActions}>
+                  <View style={styles.priceChip}>
+                    <Text style={styles.priceText}>{(item.price ?? 0).toLocaleString()}₮</Text>
+                  </View>
+                  {canHideHistoryEntry(item) ? (
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      disabled={hidingRideId === Number(item.id)}
+                      style={[styles.hideButton, hidingRideId === Number(item.id) && styles.hideButtonDisabled]}
+                      onPress={(event) => {
+                        event.stopPropagation?.();
+                        hideHistoryEntry(item);
+                      }}
+                    >
+                      <Text style={styles.hideButtonText}>
+                        {hidingRideId === Number(item.id) ? "..." : "Устгах"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
 
-              <Text style={styles.meta}>Огноо: {item.ride_date || "-"} · Цаг: {item.start_time || "-"}</Text>
+              <Text style={styles.meta}>Огноо: {formatRideDate(item.ride_date)} · Цаг: {item.start_time || "-"}</Text>
 
               <View style={styles.tagRow}>
                 <View style={[styles.entryTag, item._entryType === "created" ? styles.createdTag : styles.bookedTag]}>
@@ -296,14 +375,25 @@ const styles = StyleSheet.create({
     fontFamily: AppFontFamily,
     maxWidth: 230,
   },
+  cardActions: { marginLeft: "auto", alignItems: "flex-end" },
   priceChip: {
-    marginLeft: "auto",
     backgroundColor: AppTheme.colors.accentGlow,
     borderRadius: AppTheme.radius.pill,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   priceText: { color: AppTheme.colors.accentDeep, fontSize: 13, fontWeight: "700" },
+  hideButton: {
+    marginTop: 8,
+    borderRadius: AppTheme.radius.pill,
+    borderWidth: 1,
+    borderColor: "#f0c8bd",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "#fff7f4",
+  },
+  hideButtonDisabled: { opacity: 0.55 },
+  hideButtonText: { color: AppTheme.colors.danger, fontSize: 11, fontWeight: "700" },
   meta: { color: AppTheme.colors.textMuted, fontSize: 14, lineHeight: 21, marginTop: 12 },
   tagRow: { flexDirection: "row", marginTop: 16, flexWrap: "wrap" },
   entryTag: { borderRadius: AppTheme.radius.pill, paddingHorizontal: 12, paddingVertical: 8, marginRight: 10, marginBottom: 8 },
