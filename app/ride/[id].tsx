@@ -26,6 +26,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -150,6 +151,10 @@ function formatLastSeen(value?: string | null) {
 }
 
 function getMeetupParticipantStatusLabel(participant: any) {
+  if (participant?.pin_confirmed) {
+    return "PIN баталгаажсан";
+  }
+
   if (participant?.arrived) {
     return "Ирсэн";
   }
@@ -248,6 +253,8 @@ export default function RideDetail() {
     boolean | null
   >(null);
   const [meetupLocationLoading, setMeetupLocationLoading] = useState(false);
+  const [meetupPin, setMeetupPin] = useState("");
+  const [meetupPinLoading, setMeetupPinLoading] = useState(false);
 
   const mapRef = useRef<MapView | null>(null);
   const meetupLocationAlertShownRef = useRef(false);
@@ -709,6 +716,46 @@ export default function RideDetail() {
     }
   };
 
+  const confirmMeetupPin = async () => {
+    const rideId = ride?.id ?? (id ? Number(id) : null);
+    const pinLength = Number(meetupPresence?.meetup_pin_length || 4);
+    const normalizedPin = meetupPin.replace(/\D/g, "");
+
+    if (!rideId) {
+      Alert.alert("Алдаа", "Ride мэдээлэл дутуу байна.");
+      return;
+    }
+
+    if (normalizedPin.length !== pinLength) {
+      Alert.alert("PIN дутуу байна", `${pinLength} оронтой PIN код оруулна уу.`);
+      return;
+    }
+
+    try {
+      setMeetupPinLoading(true);
+      const response = await apiFetch(`/rides/${rideId}/presence/pin`, {
+        method: "POST",
+        body: JSON.stringify({ code: normalizedPin }),
+      });
+
+      setMeetupPresence(response);
+      setMeetupPin("");
+      void playActionSuccessSound();
+
+      if (response?.ride_started) {
+        await loadRide(rideId);
+        Alert.alert("Баталгаажлаа", "Бүгд ирсэн тул аялал эхэллээ.");
+        return;
+      }
+
+      Alert.alert("Баталгаажлаа", "Уулзалтын ирц PIN кодоор баталгаажлаа.");
+    } catch (err: any) {
+      Alert.alert("Алдаа", err?.message || "PIN баталгаажуулж чадсангүй.");
+    } finally {
+      setMeetupPinLoading(false);
+    }
+  };
+
   const cancelMyBooking = async () => {
     if (!bookingId) {
       Alert.alert("Алдаа", "Захиалгын мэдээлэл дутуу байна.");
@@ -811,6 +858,9 @@ export default function RideDetail() {
   const meetupParticipants = Array.isArray(meetupPresence?.participants)
     ? meetupPresence.participants
     : [];
+  const currentMeetupParticipant = meetupParticipants.find(
+    (participant: any) => Number(participant?.user_id) === Number(user?.id)
+  );
   const meetupSummaryText = meetupPresence
     ? getMeetupSummaryCopy(meetupPresence, ride?.status)
     : null;
@@ -822,6 +872,16 @@ export default function RideDetail() {
         Number(meetupPresence?.required_dwell_seconds ?? 300) / 60
       )} минут тогтовол ирц баталгаажина.`
     : "Байршил шалгалт ride эхлэхээс 30 минутын өмнө идэвхжинэ.";
+
+  const meetupPinLength = Number(meetupPresence?.meetup_pin_length || 4);
+  const driverMeetupCode = isOwner ? String(meetupPresence?.meetup_code || "") : "";
+  const canConfirmMeetupPin =
+    Boolean(meetupPresence) &&
+    !isOwner &&
+    normalizedBookingStatus === "approved" &&
+    !["started", "completed", "cancelled", "canceled"].includes(status) &&
+    !currentMeetupParticipant?.pin_confirmed &&
+    meetupPresence?.pin_confirmation_enabled !== false;
 
   const goToRating = () => {
     if (!ride?.id || !ride?.user_id) {
@@ -1084,6 +1144,55 @@ export default function RideDetail() {
                     {Number(meetupPresence?.summary?.approved_passenger_count || 0)}
                   </Text>
                 </View>
+              </View>
+            ) : null}
+
+            {driverMeetupCode ? (
+              <View style={styles.meetupPinPanel}>
+                <Text style={styles.meetupPinLabel}>Уулзалтын PIN</Text>
+                <Text style={styles.meetupPinCode}>{driverMeetupCode}</Text>
+                <Text style={styles.meetupPinHelp}>
+                  Зорчигч эхлэх цэг дээр ирэхэд энэ кодыг хэлж ирцээ баталгаажуулна.
+                </Text>
+              </View>
+            ) : null}
+
+            {canConfirmMeetupPin ? (
+              <View style={styles.meetupPinPanel}>
+                <Text style={styles.meetupPinLabel}>Жолоочийн PIN</Text>
+                <View style={styles.meetupPinEntryRow}>
+                  <TextInput
+                    value={meetupPin}
+                    onChangeText={(text) => {
+                      setMeetupPin(text.replace(/\D/g, "").slice(0, meetupPinLength));
+                    }}
+                    placeholder="0000"
+                    placeholderTextColor={AppTheme.colors.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={meetupPinLength}
+                    style={styles.meetupPinInput}
+                  />
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[
+                      styles.meetupPinButton,
+                      meetupPinLoading && styles.buttonDisabled,
+                    ]}
+                    onPress={() => {
+                      void confirmMeetupPin();
+                    }}
+                    disabled={meetupPinLoading}
+                  >
+                    {meetupPinLoading ? (
+                      <ActivityIndicator size="small" color={AppTheme.colors.white} />
+                    ) : (
+                      <Text style={styles.meetupPinButtonText}>Батлах</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.meetupPinHelp}>
+                  GPS алдаатай үед жолоочоос авсан кодоор нэг газар уулзсаныг батална.
+                </Text>
               </View>
             ) : null}
 
@@ -1648,6 +1757,67 @@ const styles = StyleSheet.create({
   meetupStatValue: {
     color: AppTheme.colors.text,
     fontSize: 15,
+    fontWeight: "700",
+  },
+  meetupPinPanel: {
+    marginTop: 12,
+    backgroundColor: AppTheme.colors.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#d8e4dd",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  meetupPinLabel: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  meetupPinCode: {
+    color: AppTheme.colors.text,
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  meetupPinHelp: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  meetupPinEntryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+  },
+  meetupPinInput: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#cfe0d6",
+    backgroundColor: "#f8fbf9",
+    color: AppTheme.colors.text,
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+    paddingHorizontal: 12,
+  },
+  meetupPinButton: {
+    minWidth: 92,
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: AppTheme.colors.accentDeep,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  meetupPinButtonText: {
+    color: AppTheme.colors.white,
+    fontSize: 13,
     fontWeight: "700",
   },
   meetupLoadingRow: {
