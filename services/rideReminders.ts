@@ -195,6 +195,19 @@ function buildReminderTargets({
   return Array.from(targets.values());
 }
 
+async function isMeetupLocationVerified(rideId: number) {
+  try {
+    const presence = await apiFetch(`/rides/${rideId}/presence`);
+    return Boolean(
+      presence?.actor_location_verified ||
+        presence?.tracking?.location_verified ||
+        presence?.tracking?.arrived
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function getImmediateReminderState() {
   try {
     const raw = await AsyncStorage.getItem(IMMEDIATE_REMINDER_STATE_KEY);
@@ -411,6 +424,15 @@ export async function syncRideReminderNotifications({
     myRides,
     bookings,
   });
+  const reminderTargets: ReminderTarget[] = [];
+  for (const target of targets) {
+    const rideId = toRideId(target.ride?.id);
+    if (rideId && (await isMeetupLocationVerified(rideId))) {
+      continue;
+    }
+
+    reminderTargets.push(target);
+  }
   const existingIds = await getExistingReminderIds();
   const immediateReminderState = await getImmediateReminderState();
   const nextImmediateReminderState: ImmediateReminderState = {};
@@ -421,7 +443,7 @@ export async function syncRideReminderNotifications({
     )
   );
 
-  for (const target of targets) {
+  for (const target of reminderTargets) {
     const plan = getReminderSchedulePlan(
       target.ride,
       target.identifier,

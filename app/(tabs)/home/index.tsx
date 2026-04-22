@@ -6,6 +6,7 @@ import { apiFetch } from "@/services/apiClient";
 import { getToken, getUser } from "@/services/authStorage";
 import {
   extractBookedRideIds,
+  getBookingEntries,
   extractBookingStatusByRide,
   extractBookingStatusLabelByRide,
   getBookingStatusColor,
@@ -302,6 +303,21 @@ function HomeScreen() {
         const allRides = extractRideList(allRidesRaw);
         const myRides = extractRideList(myRidesRaw);
         const mineList = Array.isArray(myRides) ? myRides : [];
+        const bookingEntries = getBookingEntries(myBookings);
+        const rideById = new Map<number, any>();
+        for (const ride of allRides) {
+          const rideId = Number(ride?.id);
+          if (Number.isFinite(rideId)) {
+            rideById.set(rideId, ride);
+          }
+        }
+        const bookingByRideId = new Map<number, any>();
+        for (const booking of bookingEntries) {
+          const rideId = Number(booking?.ride_id ?? booking?.ride?.id ?? booking?.id);
+          if (Number.isFinite(rideId)) {
+            bookingByRideId.set(rideId, booking);
+          }
+        }
 
         const bookedIds = extractBookedRideIds(myBookings);
         const nextBookingStatusByRide = extractBookingStatusByRide(myBookings);
@@ -311,22 +327,27 @@ function HomeScreen() {
 
         const now = new Date();
 
-        const matched = Array.isArray(allRides)
-          ? allRides
-              .filter((r: any) => bookedIds.includes(Number(r?.id)))
-              .filter((ride: any) => shouldShowRideOnHome(ride, now))
-              .map((ride: any) => {
-                const rideId = Number(ride?.id);
-                const bookingStatus = nextBookingStatusByRide[rideId];
+        const matched = bookedIds
+          .map((rideId: number) => {
+            const booking = bookingByRideId.get(rideId);
+            const ride = rideById.get(rideId) || booking?.ride;
+            if (!ride) {
+              return null;
+            }
 
-                return {
-                  ...ride,
-                  booking_status: bookingStatus,
-                  booking_status_label:
-                    nextBookingStatusLabelByRide[rideId] || getBookingStatusLabel(bookingStatus),
-                };
-              })
-          : [];
+            const bookingStatus = nextBookingStatusByRide[rideId] || booking?.status;
+            return {
+              ...ride,
+              id: Number(ride?.id || rideId),
+              booking_status: bookingStatus,
+              booking_status_label:
+                nextBookingStatusLabelByRide[rideId] ||
+                booking?.status_label ||
+                getBookingStatusLabel(bookingStatus),
+            };
+          })
+          .filter(Boolean)
+          .filter((ride: any) => shouldShowRideOnHome(ride, now));
 
         setBookedRides(matched);
 

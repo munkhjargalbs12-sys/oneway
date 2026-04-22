@@ -12,6 +12,7 @@ import {
   syncPushTokenWithBackend,
 } from "@/services/pushNotifications";
 import { formatRideDate } from "@/services/rideDate";
+import { syncRideReminderNotificationsFromServer } from "@/services/rideReminders";
 import { getRideStartDate } from "@/services/rideTiming";
 import polyline from "@mapbox/polyline";
 import { router, useLocalSearchParams } from "expo-router";
@@ -56,6 +57,12 @@ const seatImages: Record<number, any> = {
 
 const MEETUP_TRACKING_LEAD_MINUTES = 30;
 const MEETUP_TRACKING_GRACE_MINUTES = 45;
+const MEETUP_CHECK_IN_RETRY_MS = 30 * 1000;
+const MEETUP_CHECK_IN_RETRY_DELAY_MS = 5 * 1000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function getAvatarSource(avatarId?: string) {
   if (!avatarId) return avatars.sister;
@@ -267,6 +274,7 @@ export default function RideDetail() {
     boolean | null
   >(null);
   const [meetupLocationLoading, setMeetupLocationLoading] = useState(false);
+  const [meetupCheckInStatus, setMeetupCheckInStatus] = useState("");
   const [meetupPin, setMeetupPin] = useState("");
   const [meetupPinLoading, setMeetupPinLoading] = useState(false);
 
@@ -533,23 +541,59 @@ export default function RideDetail() {
         return;
       }
 
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
+      const deadline = Date.now() + MEETUP_CHECK_IN_RETRY_MS;
+      let response: any = null;
+      let lastError: any = null;
 
-      const response = await apiFetch(`/rides/${rideId}/presence`, {
-        method: "POST",
-        body: JSON.stringify({
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-          accuracy: currentLocation.coords.accuracy,
-          check_in: true,
-        }),
-      });
+      while (Date.now() <= deadline && !response) {
+        const remainingSeconds = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
+        setMeetupCheckInStatus(
+          `30 секунд шалгаж байна. Түр хүлээгээрэй... (${remainingSeconds} сек)`
+        );
+
+        try {
+          const currentLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+
+          response = await apiFetch(`/rides/${rideId}/presence`, {
+            method: "POST",
+            body: JSON.stringify({
+              latitude: currentLocation.coords.latitude,
+              longitude: currentLocation.coords.longitude,
+              accuracy: currentLocation.coords.accuracy,
+              check_in: true,
+            }),
+          });
+        } catch (err: any) {
+          lastError = err;
+          const message = String(err?.message || "");
+          const canRetry =
+            message.includes("дотор") ||
+            message.includes("радиус") ||
+            message.includes("accuracy") ||
+            message.includes("байрш");
+
+          if (!canRetry || Date.now() >= deadline) {
+            break;
+          }
+
+          await sleep(Math.min(MEETUP_CHECK_IN_RETRY_DELAY_MS, Math.max(0, deadline - Date.now())));
+        }
+      }
+
+      if (!response) {
+        throw (
+          lastError ||
+          new Error("30 секунд шалгахад уулзах цэгээс 15м дотор баталгаажсангүй.")
+        );
+      }
 
       setMeetupPresence(response);
       setMeetupLocationReady(true);
+      setMeetupCheckInStatus("");
       void playActionSuccessSound();
+      void syncRideReminderNotificationsFromServer();
 
       if (response?.ride_started) {
         await loadRide(rideId);
@@ -582,6 +626,7 @@ export default function RideDetail() {
       const message = String(err?.message || "").trim();
       Alert.alert("Ирц баталгаажсангүй", message || "Байршлаа шалгаад дахин оролдоно уу.");
     } finally {
+      setMeetupCheckInStatus("");
       setMeetupLocationLoading(false);
     }
   }, [id, loadMeetupPresence, loadRide, openMeetupLocationSettings, ride?.id]);
@@ -910,7 +955,7 @@ export default function RideDetail() {
   const isMeetupWindowUpcoming =
     rideStartDate ? rideStartDate.getTime() > Date.now() && !meetupPresence : false;
   const meetupInfoCopy = meetupPresence
-    ? `Эхлэх цэгээс ${meetupPresence?.required_start_radius_meters ?? 10}м дотор "Би уулзах цэгт ирсэн" товч дарж байршлаа баталгаажуулна. Дараа нь зорчигч жолоочийн PIN кодоор ирцээ батална.`
+    ? `Эхлэх цэгээс ${meetupPresence?.required_start_radius_meters ?? 15}м дотор "Би уулзах цэгт ирсэн" товч дарж байршлаа баталгаажуулна. Дараа нь зорчигч жолоочийн PIN кодоор ирцээ батална.`
     : "Ирцийн шалгалт ride эхлэхээс 30 минутын өмнө идэвжинэ.";
 
   const meetupPinLength = Number(meetupPresence?.meetup_pin_length || 4);
@@ -1110,7 +1155,7 @@ export default function RideDetail() {
             </Text>
             <Text style={styles.meetupLocationBody}>
               Энэ товчийг уулзах цэг дээрээ ирсний дараа дарна. Бид таны одоогийн
-              байршлыг эхлэх цэгээс 10м радиуст байгаа эсэхээр шалгана.
+              байршлыг эхлэх цэгээс 15м радиуст 30 секундийн турш шалгана.
             </Text>
 
             <TouchableOpacity
@@ -1125,7 +1170,9 @@ export default function RideDetail() {
               disabled={meetupLocationLoading}
             >
               {meetupLocationLoading ? (
-                <ActivityIndicator size="small" color={AppTheme.colors.white} />
+                <Text style={styles.meetupLocationButtonText}>
+                  {meetupCheckInStatus || "Байршил шалгаж байна..."}
+                </Text>
               ) : (
                 <Text style={styles.meetupLocationButtonText}>
                   Би уулзах цэгт ирсэн
@@ -1728,6 +1775,8 @@ const styles = StyleSheet.create({
     color: AppTheme.colors.white,
     fontSize: 13,
     fontWeight: "700",
+    textAlign: "center",
+    paddingHorizontal: 12,
   },
   meetupCard: {
     backgroundColor: AppTheme.colors.accentGlow,
