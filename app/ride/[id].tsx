@@ -35,7 +35,6 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { apiFetch } from "../../services/apiClient";
 import { isGuestMode } from "../../services/authStorage";
 import { playActionSuccessSound } from "../../services/notificationSound";
-import { syncRideMeetupTracking } from "../../services/rideMeetupTracking";
 
 const avatars: Record<string, any> = {
   grandfa: require("../../assets/profile/avatars/grandfa.png"),
@@ -151,6 +150,14 @@ function formatLastSeen(value?: string | null) {
 }
 
 function getMeetupParticipantStatusLabel(participant: any) {
+  if (participant?.role === "driver" && participant?.location_verified) {
+    return "Ирсэн, PIN бэлэн";
+  }
+
+  if (!participant?.pin_confirmed && participant?.location_verified) {
+    return "Ирсэн, PIN хүлээж байна";
+  }
+
   if (participant?.pin_confirmed) {
     return "PIN баталгаажсан";
   }
@@ -176,8 +183,11 @@ function getMeetupSummaryCopy(presence: any, rideStatus: string) {
   const summary = presence?.summary;
   const driverArrived = Boolean(summary?.driver_arrived);
   const approvedPassengerCount = Number(summary?.approved_passenger_count || 0);
-  const arrivedPassengerCount = Number(summary?.arrived_passenger_count || 0);
-  const remainingPassengers = Math.max(approvedPassengerCount - arrivedPassengerCount, 0);
+  const locationVerifiedPassengerCount = Number(summary?.location_verified_passenger_count || 0);
+  const confirmedPassengerCount = Number(
+    summary?.confirmed_passenger_count ?? summary?.arrived_passenger_count ?? 0
+  );
+  const remainingPassengers = Math.max(approvedPassengerCount - confirmedPassengerCount, 0);
 
   if (normalizedRideStatus === "started" || presence?.ride_started) {
     return "Баг бүрдэж, аялал эхэлсэн байна.";
@@ -196,6 +206,10 @@ function getMeetupSummaryCopy(presence: any, rideStatus: string) {
   }
 
   if (remainingPassengers > 0) {
+    if (locationVerifiedPassengerCount > 0) {
+      return `Жолооч ирсэн. ${locationVerifiedPassengerCount} зорчигч уулзах цэг дээр ирсэн, ${remainingPassengers} PIN баталгаажуулалт хүлээж байна.`;
+    }
+
     return `Жолооч ирсэн. Одоо ${remainingPassengers} зорчигч дутуу байна.`;
   }
 
@@ -439,19 +453,16 @@ export default function RideDetail() {
     }
 
     try {
-      const [foreground, background, servicesEnabled] = await Promise.all([
+      const [foreground, servicesEnabled] = await Promise.all([
         Location.getForegroundPermissionsAsync(),
-        Location.getBackgroundPermissionsAsync(),
         Location.hasServicesEnabledAsync().catch(() => true),
       ]);
 
-      const ready =
-        foreground.granted && background.granted && servicesEnabled;
+      const ready = foreground.granted && servicesEnabled;
       setMeetupLocationReady(ready);
 
       return {
         foregroundGranted: foreground.granted,
-        backgroundGranted: background.granted,
         servicesEnabled,
         ready,
       };
@@ -459,7 +470,6 @@ export default function RideDetail() {
       setMeetupLocationReady(false);
       return {
         foregroundGranted: false,
-        backgroundGranted: false,
         servicesEnabled: false,
         ready: false,
       };
@@ -486,7 +496,13 @@ export default function RideDetail() {
     };
   }, [bookingStatus, loadMeetupLocationState, ride, user]);
 
-  const handleEnableMeetupLocation = useCallback(async () => {
+  const handleMeetupCheckIn = useCallback(async () => {
+    const rideId = ride?.id ?? (id ? Number(id) : null);
+    if (!rideId) {
+      Alert.alert("Алдаа", "Ride мэдээлэл дутуу байна.");
+      return;
+    }
+
     setMeetupLocationLoading(true);
 
     try {
@@ -498,25 +514,15 @@ export default function RideDetail() {
       if (!foreground.granted) {
         setMeetupLocationReady(false);
         openMeetupLocationSettings(
-          "Уулзах цэгт очсоныг автоматаар шалгахын тулд app-д байршлын зөвшөөрөл өгнө үү."
+          "Уулзах цэг дээр ирснээ баталгаажуулахын тулд app-д байршлын зөвшөөрөл өгнө үү."
         );
         return;
       }
 
-      let servicesEnabled = await Location.hasServicesEnabledAsync().catch(
-        () => true
-      );
-
+      let servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
       if (!servicesEnabled && Platform.OS === "android") {
         await Location.enableNetworkProviderAsync().catch(() => null);
-        servicesEnabled = await Location.hasServicesEnabledAsync().catch(
-          () => false
-        );
-      }
-
-      let background = await Location.getBackgroundPermissionsAsync();
-      if (!background.granted) {
-        background = await Location.requestBackgroundPermissionsAsync();
+        servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => false);
       }
 
       if (!servicesEnabled) {
@@ -527,30 +533,58 @@ export default function RideDetail() {
         return;
       }
 
-      if (!background.granted) {
-        setMeetupLocationReady(false);
-        openMeetupLocationSettings(
-          "Уулзах цэгт хүрснийг алдалгүй шалгахын тулд background байршлын зөвшөөрлийг асаана уу."
-        );
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const response = await apiFetch(`/rides/${rideId}/presence`, {
+        method: "POST",
+        body: JSON.stringify({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+          accuracy: currentLocation.coords.accuracy,
+          check_in: true,
+        }),
+      });
+
+      setMeetupPresence(response);
+      setMeetupLocationReady(true);
+      void playActionSuccessSound();
+
+      if (response?.ride_started) {
+        await loadRide(rideId);
+        Alert.alert("Нэг чиглэл эхэллээ", "Нэг чиглэл амжилттай эхэллээ. Good luck!");
         return;
       }
 
-      setMeetupLocationReady(true);
-      await syncRideMeetupTracking().catch(() => false);
-      Alert.alert(
-        "Location идэвхжлээ",
-        "Уулзах цэгт очсоныг одоо автоматаар шалгана."
-      );
-    } catch {
-      setMeetupLocationReady(false);
-      Alert.alert(
-        "Алдаа",
-        "Location асаах үед алдаа гарлаа. Дараа нь дахин оролдоно уу."
-      );
+      const actorRole = String(response?.actor_role || "").toLowerCase();
+      if (actorRole === "driver") {
+        Alert.alert(
+          "Ирсэн баталгаажлаа",
+          response?.meetup_code
+            ? "PIN код гарлаа. Зорчигчид ирэхээр кодоо хэлж ирцийг нь баталгаажуулна."
+            : "Таны байршил баталгаажлаа."
+        );
+      } else if (response?.summary?.driver_arrived) {
+        Alert.alert(
+          "Ирсэн баталгаажлаа",
+          "Жолоочоос 4 оронтой PIN код аваад ирцээ баталгаажуулна уу."
+        );
+      } else {
+        Alert.alert(
+          "Ирсэн баталгаажлаа",
+          "Та уулзах цэг дээр ирсэн байна. Жолоочийг хүлээж байна."
+        );
+      }
+
+      void loadMeetupPresence();
+    } catch (err: any) {
+      const message = String(err?.message || "").trim();
+      Alert.alert("Ирц баталгаажсангүй", message || "Байршлаа шалгаад дахин оролдоно уу.");
     } finally {
       setMeetupLocationLoading(false);
     }
-  }, [openMeetupLocationSettings]);
+  }, [id, loadMeetupPresence, loadRide, openMeetupLocationSettings, ride?.id]);
 
   useEffect(() => {
     if (
@@ -565,20 +599,20 @@ export default function RideDetail() {
     meetupLocationAlertShownRef.current = true;
     Alert.alert(
       "Location асаана уу",
-      "10 минутын reminder ирсэн тул уулзах цэгт очсоныг автоматаар баталгаажуулахын тулд location-оо одоо асаана уу.",
+      "10 минутын reminder ирсэн тул уулзах цэг дээр ирсэн бол location-оо шалгуулаад баталгаажуулна уу.",
       [
         { text: "Дараа" },
         {
-          text: "Location асаах",
+          text: "Ирснээ батлах",
           onPress: () => {
-            void handleEnableMeetupLocation();
+            void handleMeetupCheckIn();
           },
         },
       ]
     );
   }, [
     bookingStatus,
-    handleEnableMeetupLocation,
+    handleMeetupCheckIn,
     meetupLocationReady,
     promptLocation,
     ride,
@@ -744,7 +778,7 @@ export default function RideDetail() {
 
       if (response?.ride_started) {
         await loadRide(rideId);
-        Alert.alert("Баталгаажлаа", "Бүгд ирсэн тул аялал эхэллээ.");
+        Alert.alert("Нэг чиглэл эхэллээ", "Нэг чиглэл амжилттай эхэллээ. Good luck!");
         return;
       }
 
@@ -861,26 +895,39 @@ export default function RideDetail() {
   const currentMeetupParticipant = meetupParticipants.find(
     (participant: any) => Number(participant?.user_id) === Number(user?.id)
   );
+  const currentMeetupLocationVerified = Boolean(
+    currentMeetupParticipant?.location_verified ||
+      currentMeetupParticipant?.arrived_at ||
+      (isOwner && meetupPresence?.summary?.driver_arrived)
+  );
+  const currentMeetupPinConfirmed = Boolean(
+    currentMeetupParticipant?.pin_confirmed || currentMeetupParticipant?.arrived
+  );
   const meetupSummaryText = meetupPresence
     ? getMeetupSummaryCopy(meetupPresence, ride?.status)
     : null;
   const rideStartDate = getRideStartDate(ride);
   const isMeetupWindowUpcoming =
     rideStartDate ? rideStartDate.getTime() > Date.now() && !meetupPresence : false;
-  const meetupInfoText = meetupPresence
-    ? `Эхлэх цэгээс ${meetupPresence?.required_start_radius_meters ?? 20}м дотор ${Math.round(
-        Number(meetupPresence?.required_dwell_seconds ?? 300) / 60
-      )} минут тогтовол ирц баталгаажина.`
-    : "Байршил шалгалт ride эхлэхээс 30 минутын өмнө идэвхжинэ.";
+  const meetupInfoCopy = meetupPresence
+    ? `Эхлэх цэгээс ${meetupPresence?.required_start_radius_meters ?? 10}м дотор "Би уулзах цэгт ирсэн" товч дарж байршлаа баталгаажуулна. Дараа нь зорчигч жолоочийн PIN кодоор ирцээ батална.`
+    : "Ирцийн шалгалт ride эхлэхээс 30 минутын өмнө идэвжинэ.";
 
   const meetupPinLength = Number(meetupPresence?.meetup_pin_length || 4);
   const driverMeetupCode = isOwner ? String(meetupPresence?.meetup_code || "") : "";
+  const canMeetupCheckIn =
+    canViewMeetupStatus &&
+    shouldPromptForMeetupLocationNow &&
+    !currentMeetupLocationVerified &&
+    !["started", "completed", "cancelled", "canceled"].includes(status);
   const canConfirmMeetupPin =
     Boolean(meetupPresence) &&
     !isOwner &&
     normalizedBookingStatus === "approved" &&
     !["started", "completed", "cancelled", "canceled"].includes(status) &&
-    !currentMeetupParticipant?.pin_confirmed &&
+    currentMeetupLocationVerified &&
+    Boolean(meetupPresence?.summary?.driver_arrived) &&
+    !currentMeetupPinConfirmed &&
     meetupPresence?.pin_confirmation_enabled !== false;
 
   const goToRating = () => {
@@ -1056,15 +1103,14 @@ export default function RideDetail() {
           </View>
         ) : null}
 
-        {shouldPromptForMeetupLocationNow && meetupLocationReady === false ? (
+        {canMeetupCheckIn ? (
           <View style={styles.meetupLocationCard}>
             <Text style={styles.meetupLocationTitle}>
-              Location-оо одоо асаана уу
+              Уулзах цэг дээр ирсэн үү?
             </Text>
             <Text style={styles.meetupLocationBody}>
-              Уулзах цэгт очсоныг автоматаар баталгаажуулахын тулд утасныхаа
-              location service болон app-ийн байршлын зөвшөөрлийг идэвхтэй
-              байлгах хэрэгтэй.
+              Энэ товчийг уулзах цэг дээрээ ирсний дараа дарна. Бид таны одоогийн
+              байршлыг эхлэх цэгээс 10м радиуст байгаа эсэхээр шалгана.
             </Text>
 
             <TouchableOpacity
@@ -1074,7 +1120,7 @@ export default function RideDetail() {
                 meetupLocationLoading && styles.buttonDisabled,
               ]}
               onPress={() => {
-                void handleEnableMeetupLocation();
+                void handleMeetupCheckIn();
               }}
               disabled={meetupLocationLoading}
             >
@@ -1082,7 +1128,7 @@ export default function RideDetail() {
                 <ActivityIndicator size="small" color={AppTheme.colors.white} />
               ) : (
                 <Text style={styles.meetupLocationButtonText}>
-                  Location асаах
+                  Би уулзах цэгт ирсэн
                 </Text>
               )}
             </TouchableOpacity>
@@ -1127,7 +1173,7 @@ export default function RideDetail() {
               </View>
             </View>
 
-            <Text style={styles.meetupHint}>{meetupInfoText}</Text>
+            <Text style={styles.meetupHint}>{meetupInfoCopy}</Text>
 
             {meetupPresence ? (
               <View style={styles.meetupStatsRow}>
@@ -1140,7 +1186,11 @@ export default function RideDetail() {
                 <View style={styles.meetupStatBox}>
                   <Text style={styles.meetupStatLabel}>Зорчигч</Text>
                   <Text style={styles.meetupStatValue}>
-                    {Number(meetupPresence?.summary?.arrived_passenger_count || 0)}/
+                    {Number(
+                      meetupPresence?.summary?.confirmed_passenger_count ??
+                        meetupPresence?.summary?.arrived_passenger_count ??
+                        0
+                    )}/
                     {Number(meetupPresence?.summary?.approved_passenger_count || 0)}
                   </Text>
                 </View>
@@ -1191,7 +1241,7 @@ export default function RideDetail() {
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.meetupPinHelp}>
-                  GPS алдаатай үед жолоочоос авсан кодоор нэг газар уулзсаныг батална.
+                  Жолоочоос авсан 4 оронтой PIN кодоор уулзах цэг дээр ирснээ баталгаажуулна.
                 </Text>
               </View>
             ) : null}

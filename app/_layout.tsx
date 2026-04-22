@@ -11,11 +11,7 @@ import {
   resetNotificationSoundState,
   syncNotificationSound,
 } from "@/services/notificationSound";
-import "@/services/rideMeetupBackgroundTask";
-import {
-  stopRideMeetupTracking,
-  syncRideMeetupTracking,
-} from "@/services/rideMeetupTracking";
+import { stopRideMeetupTracking } from "@/services/rideMeetupTracking";
 import {
   syncExpoPushTokenWithBackend,
   syncPushTokenWithBackend,
@@ -214,9 +210,9 @@ export default function RootLayout() {
       return;
     }
 
+    void stopRideMeetupTracking();
     void pollNotificationSound();
     void pollRideReminders();
-    void syncRideMeetupTracking();
 
     const notificationTimer = setInterval(() => {
       void pollNotificationSound();
@@ -226,14 +222,9 @@ export default function RootLayout() {
       void pollRideReminders();
     }, 60000);
 
-    const meetupTimer = setInterval(() => {
-      void syncRideMeetupTracking();
-    }, 30000);
-
     return () => {
       clearInterval(notificationTimer);
       clearInterval(reminderTimer);
-      clearInterval(meetupTimer);
     };
   }, [isPublicRoute, pollNotificationSound, pollRideReminders]);
 

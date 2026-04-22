@@ -131,8 +131,23 @@ function formatNotificationTime(value: any) {
 }
 
 function getStatusTone(item: any, unread: boolean) {
+  const notificationType = String(item?.type || item?.notification_type || "")
+    .trim()
+    .toLowerCase();
   const bookingStatus = getBookingStatus(item);
   const attendanceStatus = getAttendanceStatus(item);
+
+  if (notificationType === "meetup_driver_checked_in") {
+    return { label: "Жолооч ирсэн", backgroundColor: "#e8f0ff", color: "#2255b4" };
+  }
+
+  if (notificationType === "meetup_rider_checked_in") {
+    return { label: "PIN хүлээж байна", backgroundColor: "#fbefd7", color: AppTheme.colors.warning };
+  }
+
+  if (notificationType === "ride_started_auto") {
+    return { label: "Чиглэл эхэлсэн", backgroundColor: AppTheme.colors.accentGlow, color: AppTheme.colors.accentDeep };
+  }
 
   if (attendanceStatus === "arrived") {
     return { label: "Ирц баталгаажсан", backgroundColor: "#e8f0ff", color: "#2255b4" };
