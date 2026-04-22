@@ -71,7 +71,11 @@ module.exports = {
       googleServicesFile: "./google-services.json",
     },
     plugins,
-    runtimeVersion: process.env.EXPO_RUNTIME_VERSION || baseExpoConfig.version || "1.0.0",
+    runtimeVersion:
+      process.env.EXPO_RUNTIME_VERSION ||
+      baseExpoConfig.runtimeVersion ||
+      baseExpoConfig.version ||
+      "1.0.0",
     updates: {
       enabled: Boolean(configuredProjectId),
       checkAutomatically: "ON_LOAD",
