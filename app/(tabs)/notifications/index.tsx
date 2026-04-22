@@ -6,7 +6,6 @@ import {
   getNotificationAttendanceStatus as getNormalizedAttendanceStatus,
   getNotificationBookingId as getNormalizedBookingId,
   getNotificationBookingStatus as getNormalizedBookingStatus,
-  isDriverBookingRequestNotification,
   sortNotificationsNewestFirst,
 } from "@/services/notificationUtils";
 import { playActionSuccessSound } from "@/services/notificationSound";
@@ -34,7 +33,7 @@ const avatarAliases: Record<string, keyof typeof avatars> = {
   female: "women",
 };
 
-type NotificationAction = "approve" | "reject" | "arrived" | "no_show";
+type NotificationAction = "approve" | "reject";
 
 function normalizeAvatarKey(value: any): keyof typeof avatars | null {
   const raw = String(value ?? "").trim().toLowerCase();
@@ -266,19 +265,7 @@ export default function NotificationsScreen() {
   };
 
   const resolveBookingId = (item: any): number | null => getNormalizedBookingId(item);
-  const isDriverBookingRequest = (item: any) => isDriverBookingRequestNotification(item);
   const canReviewRequest = (item: any) => canReviewDriverRequestNotification(item);
-
-  const canMarkAttendance = (item: any) => {
-    if (!isDriverBookingRequest(item)) return false;
-
-    const bookingStatus = getBookingStatus(item);
-    const attendanceStatus = getAttendanceStatus(item);
-    if (bookingStatus !== "approved") return false;
-    if (attendanceStatus === "arrived" || attendanceStatus === "no_show") return false;
-
-    return true;
-  };
 
   const handleDecision = async (item: any, action: "approve" | "reject") => {
     const notificationId = Number(item?.id);
@@ -304,37 +291,6 @@ export default function NotificationsScreen() {
       void syncRideReminderNotificationsFromServer();
     } catch (error: any) {
       Alert.alert("Алдаа", error?.message || "Үйлдэл амжилтгүй.");
-    } finally {
-      setActionLoading((prev) => ({ ...prev, [notificationId]: null }));
-    }
-  };
-
-  const handleAttendance = async (item: any, status: "arrived" | "no_show") => {
-    const notificationId = Number(item?.id);
-    const bookingId = resolveBookingId(item);
-
-    if (!bookingId || !Number.isFinite(notificationId)) {
-      Alert.alert("Алдаа", "Booking мэдээлэл дутуу байна.");
-      return;
-    }
-
-    try {
-      setActionLoading((prev) => ({ ...prev, [notificationId]: status }));
-      await apiFetch(`/bookings/${bookingId}/attendance`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      });
-      await apiFetch(`/notifications/${notificationId}/read`, { method: "PATCH" }).catch(() => null);
-      setItems((prev) =>
-        prev.map((notification) =>
-          Number(notification?.id) === notificationId
-            ? { ...notification, is_read: true, booking_status: "approved", attendance_status: status }
-            : notification
-        )
-      );
-      void playActionSuccessSound();
-    } catch (error: any) {
-      Alert.alert("Алдаа", error?.message || "Ирц тэмдэглэж чадсангүй.");
     } finally {
       setActionLoading((prev) => ({ ...prev, [notificationId]: null }));
     }
@@ -427,31 +383,6 @@ export default function NotificationsScreen() {
             >
               <Text style={styles.secondaryActionText}>
                 {loadingAction === "reject" ? "Түр хүлээнэ үү..." : "Татгалзах"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {canMarkAttendance(item) ? (
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              disabled={!!loadingAction}
-              style={[styles.actionButton, styles.infoAction, loadingAction && styles.actionDisabled]}
-              onPress={() => handleAttendance(item, "arrived")}
-            >
-              <Text style={styles.infoActionText}>
-                {loadingAction === "arrived" ? "Түр хүлээнэ үү..." : "Ирсэн"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              disabled={!!loadingAction}
-              style={[styles.actionButton, styles.secondaryAction, loadingAction && styles.actionDisabled]}
-              onPress={() => handleAttendance(item, "no_show")}
-            >
-              <Text style={styles.secondaryActionText}>
-                {loadingAction === "no_show" ? "Түр хүлээнэ үү..." : "Ирээгүй"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -589,10 +520,8 @@ const styles = StyleSheet.create({
   actionDisabled: { opacity: 0.62 },
   primaryAction: { backgroundColor: AppTheme.colors.accent },
   secondaryAction: { backgroundColor: AppTheme.colors.cardSoft, borderWidth: 1, borderColor: AppTheme.colors.border },
-  infoAction: { backgroundColor: "#dfe9fb" },
   primaryActionText: { color: AppTheme.colors.white, fontWeight: "700", fontSize: 13 },
   secondaryActionText: { color: AppTheme.colors.text, fontWeight: "700", fontSize: 13 },
-  infoActionText: { color: "#2255b4", fontWeight: "700", fontSize: 13 },
   noteCard: { marginTop: 14, backgroundColor: AppTheme.colors.cardSoft, borderRadius: AppTheme.radius.md, paddingHorizontal: 14, paddingVertical: 12 },
   noteOk: { color: AppTheme.colors.accentDeep, fontSize: 13, fontWeight: "700" },
   noteDanger: { color: AppTheme.colors.danger, fontSize: 13, fontWeight: "700" },

@@ -847,9 +847,6 @@ function HomeScreen() {
                             <Text style={styles.bookedDate}>
                               Огноо: {formatRideDate(ride.ride_date)}
                             </Text>
-                            <Text style={styles.bookedTime}>
-                              Цаг: {ride.start_time || "-"}
-                            </Text>
                             <Text style={styles.bookedEnd} numberOfLines={1}>
                               Очих газар:{" "}
                               {ride.end_location || "Тодорхойгүй"}
@@ -1171,7 +1168,6 @@ function HomeScreen() {
                       <Text style={styles.bookedName}>{getRideOwnerName(ride)}</Text>
                     ) : null}
                     <Text style={styles.bookedDate}>Огноо: {formatRideDate(ride.ride_date)}</Text>
-                    <Text style={styles.bookedTime}>⏰ {ride.start_time || "-"}</Text>
                     <Text style={styles.bookedEnd} numberOfLines={1}>
                       📍 Очих газар: {ride.end_location || "Тодорхойгүй"}
                     </Text>
@@ -1923,12 +1919,6 @@ const styles = StyleSheet.create({
   bookedDate: {
     fontSize: 11,
     color: AppTheme.colors.textMuted,
-  },
-  bookedTime: {
-    marginTop: 3,
-    fontSize: 13,
-    fontWeight: "600",
-    color: AppTheme.colors.text,
   },
   bookedEnd: {
     marginTop: 4,

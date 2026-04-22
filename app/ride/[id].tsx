@@ -169,15 +169,6 @@ function getMeetupParticipantStatusLabel(participant: any) {
     return "PIN баталгаажсан";
   }
 
-  if (participant?.arrived) {
-    return "Ирсэн";
-  }
-
-  const attendanceStatus = String(participant?.attendance_status || "").toLowerCase();
-  if (attendanceStatus === "arrived") {
-    return "Ирсэн";
-  }
-
   if (participant?.role === "driver") {
     return "Жолооч хянагдаж байна";
   }
@@ -946,7 +937,7 @@ export default function RideDetail() {
       (isOwner && meetupPresence?.summary?.driver_arrived)
   );
   const currentMeetupPinConfirmed = Boolean(
-    currentMeetupParticipant?.pin_confirmed || currentMeetupParticipant?.arrived
+    currentMeetupParticipant?.pin_confirmed
   );
   const meetupSummaryText = meetupPresence
     ? getMeetupSummaryCopy(meetupPresence, ride?.status)
