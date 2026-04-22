@@ -23,11 +23,13 @@ export default function CreateWayRoute() {
     startLat?: string;
     startLng?: string;
     startLabel?: string;
+    startAddress?: string;
   }>();
 
   const startLatRaw = params.lat ?? params.startLat;
   const startLngRaw = params.lng ?? params.startLng;
   const startLabel = Array.isArray(params.startLabel) ? params.startLabel[0] : params.startLabel;
+  const startAddress = Array.isArray(params.startAddress) ? params.startAddress[0] : params.startAddress;
   const startLat = Number(startLatRaw);
   const startLng = Number(startLngRaw);
 
@@ -282,7 +284,10 @@ export default function CreateWayRoute() {
                   endLat: end.latitude.toString(),
                   endLng: end.longitude.toString(),
                   ...(startLabel ? { startLabel } : {}),
+                  ...(startAddress ? { startAddress } : {}),
                   ...(selectedDestination?.label ? { endLabel: selectedDestination.label } : {}),
+                  ...(selectedDestination?.name ? { endName: selectedDestination.name } : {}),
+                  ...(selectedDestination?.address ? { endAddress: selectedDestination.address } : {}),
                   mapImage,
                 },
               });

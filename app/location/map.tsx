@@ -533,7 +533,8 @@ export default function MapPickScreen() {
                   params: {
                     startLat: point.latitude.toString(),
                     startLng: point.longitude.toString(),
-                    ...(selectedPointLabel ? { startLabel: selectedPointLabel } : {}),
+                    ...(pointLabel ? { startLabel: pointLabel } : {}),
+                    ...(selectedPlace?.address ? { startAddress: selectedPlace.address } : {}),
                   },
                 });
                 return;
@@ -582,6 +583,7 @@ export default function MapPickScreen() {
                   lat: point.latitude.toString(),
                   lng: point.longitude.toString(),
                   ...(selectedPointLabel ? { label: selectedPointLabel } : {}),
+                  ...(selectedPlace?.address ? { address: selectedPlace.address } : {}),
                   mapImage: image,
                   ...(params.role ? { role: params.role } : {}),
                 },

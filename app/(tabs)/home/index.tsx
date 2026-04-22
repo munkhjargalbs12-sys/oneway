@@ -26,6 +26,7 @@ import {
 } from "@/services/notificationUtils";
 import { playActionSuccessSound } from "@/services/notificationSound";
 import { showLocationUsageReminder } from "@/services/locationUsageReminder";
+import { getRideLocationDisplay } from "@/services/rideLocations";
 import { shouldShowRideOnHome } from "@/services/rideTiming";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -95,6 +96,7 @@ function HomeScreen() {
     startLat?: string;
     startLng?: string;
     startLabel?: string;
+    startAddress?: string;
     rideCreated?: string;
     locationReminder?: string;
   }>();
@@ -102,6 +104,7 @@ function HomeScreen() {
   const startLat = params.startLat;
   const startLng = params.startLng;
   const startLabel = params.startLabel;
+  const startAddress = params.startAddress;
   const locationReminder = params.locationReminder;
 
   const getRevealStyle = useCallback((value: Animated.Value, distance = 30) => ({
@@ -411,10 +414,11 @@ function HomeScreen() {
           ...(startLat ? { startLat } : {}),
           ...(startLng ? { startLng } : {}),
           ...(startLabel ? { startLabel } : {}),
+          ...(startAddress ? { startAddress } : {}),
         },
       });
     });
-  }, [locationReminder, startLabel, startLat, startLng]);
+  }, [locationReminder, startAddress, startLabel, startLat, startLng]);
 
   useFocusEffect(
     useCallback(() => {
@@ -563,6 +567,9 @@ function HomeScreen() {
   }, [createPulse, selectedPickupReady]);
 
   const bookedRideList: any[] = Array.isArray(bookedRides) ? bookedRides : [];
+  const activeRideEndDisplay = activeRide
+    ? getRideLocationDisplay(activeRide, "end", "Очих газар тодорхойгүй")
+    : null;
 
   if (Array.isArray(bookedRides)) {
     return (
@@ -784,6 +791,7 @@ function HomeScreen() {
                       startLat,
                       startLng,
                       ...(startLabel ? { startLabel } : {}),
+                      ...(startAddress ? { startAddress } : {}),
                     },
                   });
                 }}
@@ -821,6 +829,11 @@ function HomeScreen() {
                         ride?.booking_status_label ||
                         bookingStatusLabelByRide[rideId] ||
                         getBookingStatusLabel(bookingStatus);
+                      const endDisplay = getRideLocationDisplay(
+                        ride,
+                        "end",
+                        "Очих газар тодорхойгүй"
+                      );
 
                       return (
                         <TouchableOpacity
@@ -848,9 +861,13 @@ function HomeScreen() {
                               Огноо: {formatRideDate(ride.ride_date)}
                             </Text>
                             <Text style={styles.bookedEnd} numberOfLines={1}>
-                              Очих газар:{" "}
-                              {ride.end_location || "Тодорхойгүй"}
+                              Очих газар: {endDisplay.official}
                             </Text>
+                            {endDisplay.manual ? (
+                              <Text style={styles.locationManualText} numberOfLines={1}>
+                                {endDisplay.manual}
+                              </Text>
+                            ) : null}
                             <Text style={styles.bookedPrice}>
                               1 суудал: {ride.price ?? 0}₮
                             </Text>
@@ -910,11 +927,11 @@ function HomeScreen() {
 
                 <View style={styles.activeContentRow}>
                   <View style={styles.activeInfo}>
-                    {getRideOwnerName(activeRide) ? (
-                      <Text style={styles.activeName}>
-                        {getRideOwnerName(activeRide)}
-                      </Text>
-                    ) : null}
+                {getRideOwnerName(activeRide) ? (
+                  <Text style={styles.activeName}>
+                    {getRideOwnerName(activeRide)}
+                  </Text>
+                ) : null}
                     <Text style={styles.activeDate}>
                       Огноо: {formatRideDate(activeRide.ride_date)}
                     </Text>
@@ -922,11 +939,13 @@ function HomeScreen() {
                       Цаг: {activeRide.start_time || "-"}
                     </Text>
                     <Text style={styles.activeEnd} numberOfLines={2}>
-                      Очих газар:{" "}
-                      {activeRide.end_location ??
-                        activeRide.to_location ??
-                        "Тодорхойгүй"}
+                      Очих газар: {activeRideEndDisplay?.official || "Очих газар тодорхойгүй"}
                     </Text>
+                    {activeRideEndDisplay?.manual ? (
+                      <Text style={styles.locationManualText} numberOfLines={1}>
+                        {activeRideEndDisplay.manual}
+                      </Text>
+                    ) : null}
                     <Text style={styles.activePrice}>
                       1 суудал: {activeRide.price ?? 0}₮
                     </Text>
@@ -1117,6 +1136,7 @@ function HomeScreen() {
                   startLat,
                   startLng,
                   ...(startLabel ? { startLabel } : {}),
+                  ...(startAddress ? { startAddress } : {}),
                 },
               });
             }}
@@ -1146,6 +1166,11 @@ function HomeScreen() {
                 ride?.booking_status_label ||
                 bookingStatusLabelByRide[rideId] ||
                 getBookingStatusLabel(bookingStatus);
+              const endDisplay = getRideLocationDisplay(
+                ride,
+                "end",
+                "Очих газар тодорхойгүй"
+              );
 
               return (
                 <TouchableOpacity
@@ -1169,8 +1194,13 @@ function HomeScreen() {
                     ) : null}
                     <Text style={styles.bookedDate}>Огноо: {formatRideDate(ride.ride_date)}</Text>
                     <Text style={styles.bookedEnd} numberOfLines={1}>
-                      📍 Очих газар: {ride.end_location || "Тодорхойгүй"}
+                      📍 Очих газар: {endDisplay.official}
                     </Text>
+                    {endDisplay.manual ? (
+                      <Text style={styles.locationManualText} numberOfLines={1}>
+                        {endDisplay.manual}
+                      </Text>
+                    ) : null}
                     <Text style={styles.bookedPrice}>1 суудал: {ride.price ?? 0}₮</Text>
                     <Text
                       style={[
@@ -1225,8 +1255,13 @@ function HomeScreen() {
                 </Text>
                 <Text style={styles.activeTime}>⏰ {activeRide.start_time || "-"}</Text>
                 <Text style={styles.activeEnd} numberOfLines={2}>
-                  📍 Очих газар: {activeRide.end_location ?? activeRide.to_location ?? "Тодорхойгүй"}
+                  📍 Очих газар: {activeRideEndDisplay?.official || "Очих газар тодорхойгүй"}
                 </Text>
+                {activeRideEndDisplay?.manual ? (
+                  <Text style={styles.locationManualText} numberOfLines={1}>
+                    {activeRideEndDisplay.manual}
+                  </Text>
+                ) : null}
                 <Text style={styles.activePrice}>1 суудал: {activeRide.price ?? 0}₮</Text>
               </View>
               <Image
@@ -1715,7 +1750,8 @@ const styles = StyleSheet.create({
   activeEnd: {
     marginTop: 6,
     fontSize: 13,
-    color: AppTheme.colors.textMuted,
+    color: AppTheme.colors.text,
+    fontWeight: "700",
     lineHeight: 18,
   },
   activePrice: {
@@ -1923,7 +1959,14 @@ const styles = StyleSheet.create({
   bookedEnd: {
     marginTop: 4,
     fontSize: 12,
+    color: AppTheme.colors.text,
+    fontWeight: "700",
+  },
+  locationManualText: {
+    marginTop: 2,
+    fontSize: 12,
     color: AppTheme.colors.textMuted,
+    opacity: 0.72,
   },
   bookedPrice: {
     marginTop: 4,

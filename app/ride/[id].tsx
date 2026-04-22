@@ -12,6 +12,7 @@ import {
   syncPushTokenWithBackend,
 } from "@/services/pushNotifications";
 import { formatRideDate } from "@/services/rideDate";
+import { getRideLocationDisplay, getRideRouteTitle } from "@/services/rideLocations";
 import { syncRideReminderNotificationsFromServer } from "@/services/rideReminders";
 import { getRideStartDate } from "@/services/rideTiming";
 import polyline from "@mapbox/polyline";
@@ -79,11 +80,6 @@ function getRideOwnerName(ride: any) {
     ride?.driver?.name ||
     "Хэрэглэгч"
   );
-}
-
-function getLocationLabel(value: unknown, fallback: string) {
-  const normalized = String(value || "").trim();
-  return normalized || fallback;
 }
 
 function getStatusTone(status: string) {
@@ -890,10 +886,9 @@ export default function RideDetail() {
 
   const rideDateText = formatRideDate(ride?.ride_date, "Огноо байхгүй");
   const ownerName = getRideOwnerName(ride);
-  const routeTitle = `${getLocationLabel(ride?.start_location, "Эхлэх цэг тодорхойгүй")} → ${getLocationLabel(
-    ride?.end_location,
-    "Очих газар тодорхойгүй"
-  )}`;
+  const routeTitle = getRideRouteTitle(ride);
+  const startDisplay = getRideLocationDisplay(ride, "start", "Эхлэх газар тодорхойгүй");
+  const endDisplay = getRideLocationDisplay(ride, "end", "Очих газар тодорхойгүй");
   const seatImageIndex = Math.min(Math.max(seatsLeft, 1), 4);
   const normalizedBookingStatus = String(bookingStatus || "").toLowerCase();
   const hasActiveBooking = ["pending", "approved"].includes(normalizedBookingStatus);
@@ -1036,6 +1031,23 @@ export default function RideDetail() {
         </View>
 
         <Text style={styles.title}>{routeTitle}</Text>
+
+        <View style={styles.locationSummary}>
+          <View style={styles.locationSummaryItem}>
+            <Text style={styles.locationSummaryLabel}>Эхлэх газар</Text>
+            <Text style={styles.locationSummaryOfficial}>{startDisplay.official}</Text>
+            {startDisplay.manual ? (
+              <Text style={styles.locationSummaryManual}>{startDisplay.manual}</Text>
+            ) : null}
+          </View>
+          <View style={styles.locationSummaryItem}>
+            <Text style={styles.locationSummaryLabel}>Очих газар</Text>
+            <Text style={styles.locationSummaryOfficial}>{endDisplay.official}</Text>
+            {endDisplay.manual ? (
+              <Text style={styles.locationSummaryManual}>{endDisplay.manual}</Text>
+            ) : null}
+          </View>
+        </View>
 
         <View style={styles.infoGrid}>
           <InfoPill label="Огноо" value={rideDateText} />
@@ -1553,6 +1565,34 @@ const styles = StyleSheet.create({
     color: AppTheme.colors.text,
     marginBottom: 14,
     fontFamily: AppFontFamily,
+  },
+  locationSummary: {
+    marginBottom: 14,
+    gap: 10,
+  },
+  locationSummaryItem: {
+    borderLeftWidth: 3,
+    borderLeftColor: AppTheme.colors.accentSoft,
+    paddingLeft: 12,
+  },
+  locationSummaryLabel: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 3,
+    textTransform: "uppercase",
+  },
+  locationSummaryOfficial: {
+    color: AppTheme.colors.text,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: "700",
+  },
+  locationSummaryManual: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 2,
   },
   infoGrid: {
     flexDirection: "row",

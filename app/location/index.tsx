@@ -8,8 +8,8 @@ import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } fr
 
 type Role = "driver" | "rider";
 type SelectedLocation =
-  | { source: "map"; lat: string; lng: string; label?: string }
-  | { source: "place"; lat: string; lng: string; label: string };
+  | { source: "map"; lat: string; lng: string; label?: string; address?: string }
+  | { source: "place"; lat: string; lng: string; label: string; address?: string };
 
 export default function LocationScreen() {
   const [role, setRole] = useState<Role | null>(null);
@@ -21,6 +21,7 @@ export default function LocationScreen() {
     lat?: string;
     lng?: string;
     label?: string;
+    address?: string;
     mapImage?: string;
     role?: string;
   }>();
@@ -45,6 +46,7 @@ export default function LocationScreen() {
     const lat = Array.isArray(params.lat) ? params.lat[0] : params.lat;
     const lng = Array.isArray(params.lng) ? params.lng[0] : params.lng;
     const label = Array.isArray(params.label) ? params.label[0] : params.label;
+    const address = Array.isArray(params.address) ? params.address[0] : params.address;
 
     if ((source !== "map" && source !== "place") || !lat || !lng) return;
 
@@ -54,8 +56,9 @@ export default function LocationScreen() {
         lat,
         lng,
         label,
+        ...(address ? { address } : {}),
       });
-      setAreaText(label);
+      setAreaText(address || label);
       return;
     }
 
@@ -64,10 +67,11 @@ export default function LocationScreen() {
       lat,
       lng,
       ...(label ? { label } : {}),
+      ...(address ? { address } : {}),
     });
 
-    if (label) {
-      setAreaText(label);
+    if (address || label) {
+      setAreaText(address || label || "");
       return;
     }
 
@@ -85,7 +89,7 @@ export default function LocationScreen() {
         setAreaText(`${city} ${district} дүүрэг, ${subregion}`.trim());
       }
     })();
-  }, [params.label, params.lat, params.lng, params.source]);
+  }, [params.address, params.label, params.lat, params.lng, params.source]);
 
   async function ensureDriverRole() {
     try {
@@ -131,6 +135,9 @@ export default function LocationScreen() {
             : areaText
               ? { startLabel: areaText }
               : {}),
+          ...(selected.address || areaText
+            ? { startAddress: selected.address || areaText || "" }
+            : {}),
           role,
         },
       });

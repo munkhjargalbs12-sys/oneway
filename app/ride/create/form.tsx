@@ -1,7 +1,9 @@
 import { AppFontFamily, AppTheme } from "@/constants/theme";
 import { API_URL } from "@/services/config";
 import { playRideCreatedSound } from "@/services/notificationSound";
+import { formatOfficialAddressFromGeocode } from "@/services/rideLocations";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -92,20 +94,37 @@ function getRideTimeValidationMessage(rideDate: string, startTime: string, now =
   return null;
 }
 
+function isCoordinateLikeLabel(value: unknown) {
+  return /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(String(value || "").trim());
+}
+
 export default function RideCreationScreen() {
   const params = useLocalSearchParams();
   const startLabelParam = Array.isArray(params.startLabel) ? params.startLabel[0] : params.startLabel;
+  const startAddressParam = Array.isArray(params.startAddress) ? params.startAddress[0] : params.startAddress;
   const endLabelParam = Array.isArray(params.endLabel) ? params.endLabel[0] : params.endLabel;
+  const endAddressParam = Array.isArray(params.endAddress) ? params.endAddress[0] : params.endAddress;
+  const endNameParam = Array.isArray(params.endName) ? params.endName[0] : params.endName;
+  const startLatParam = Array.isArray(params.startLat) ? params.startLat[0] : params.startLat;
+  const startLngParam = Array.isArray(params.startLng) ? params.startLng[0] : params.startLng;
+  const endLatParam = Array.isArray(params.endLat) ? params.endLat[0] : params.endLat;
+  const endLngParam = Array.isArray(params.endLng) ? params.endLng[0] : params.endLng;
 
-  const start = {
-    lat: Number(Array.isArray(params.startLat) ? params.startLat[0] : params.startLat),
-    lng: Number(Array.isArray(params.startLng) ? params.startLng[0] : params.startLng),
-  };
+  const start = useMemo(
+    () => ({
+      lat: Number(startLatParam),
+      lng: Number(startLngParam),
+    }),
+    [startLatParam, startLngParam]
+  );
 
-  const end = {
-    lat: Number(Array.isArray(params.endLat) ? params.endLat[0] : params.endLat),
-    lng: Number(Array.isArray(params.endLng) ? params.endLng[0] : params.endLng),
-  };
+  const end = useMemo(
+    () => ({
+      lat: Number(endLatParam),
+      lng: Number(endLngParam),
+    }),
+    [endLatParam, endLngParam]
+  );
 
   const mapImageParam = Array.isArray(params.mapImage) ? params.mapImage[0] : params.mapImage;
   const mapImageUri =
@@ -118,8 +137,23 @@ export default function RideCreationScreen() {
   const [seats, setSeats] = useState(1);
   const maxSeats = 5;
   const [seatPrice, setSeatPrice] = useState(2000);
+  const [startLocationName, setStartLocationName] = useState("");
+  const [startOfficialAddress, setStartOfficialAddress] = useState(
+    typeof startAddressParam === "string"
+      ? startAddressParam
+      : typeof startLabelParam === "string" && !isCoordinateLikeLabel(startLabelParam)
+        ? startLabelParam
+        : ""
+  );
+  const [endOfficialAddress, setEndOfficialAddress] = useState(
+    typeof endAddressParam === "string"
+      ? endAddressParam
+      : typeof endLabelParam === "string" && !isCoordinateLikeLabel(endLabelParam)
+        ? endLabelParam
+        : ""
+  );
   const [endLocationName, setEndLocationName] = useState(
-    typeof endLabelParam === "string" ? endLabelParam : ""
+    typeof endNameParam === "string" ? endNameParam : ""
   );
   const [date, setDate] = useState(getDefaultRideStartDate);
   const [time, setTime] = useState(getDefaultRideStartDate);
@@ -150,6 +184,8 @@ export default function RideCreationScreen() {
       }
 
       const days = selectedWeekdays.map((index) => WEEKDAY_MAP[index]);
+      const normalizedStartLocationName = startLocationName.trim();
+      const normalizedEndLocationName = endLocationName.trim();
 
       const routeRes = await fetch(`${API_URL}/route`, {
         method: "POST",
@@ -164,8 +200,12 @@ export default function RideCreationScreen() {
         body: JSON.stringify({
           start,
           end,
-          start_location: typeof startLabelParam === "string" ? startLabelParam : "",
-          end_location: endLocationName,
+          start_location: normalizedStartLocationName,
+          start_address: startOfficialAddress.trim(),
+          start_place_name: normalizedStartLocationName,
+          end_location: normalizedEndLocationName,
+          end_address: endOfficialAddress.trim(),
+          end_place_name: normalizedEndLocationName,
           ride_date: rideDate,
           start_time: startTime,
           polyline: routeData.polyline,
@@ -182,8 +222,13 @@ export default function RideCreationScreen() {
   };
 
   const confirmRide = async () => {
+    if (!startLocationName.trim()) {
+      Alert.alert("Алдаа", "Эхлэх цэгийн нэршлээ оруулна уу");
+      return;
+    }
+
     if (!endLocationName.trim()) {
-      Alert.alert("Алдаа", "Очих газраа оруулна уу");
+      Alert.alert("Алдаа", "Очих газрын нэршлээ оруулна уу");
       return;
     }
 
@@ -230,6 +275,66 @@ export default function RideCreationScreen() {
   useEffect(() => {
     initVehicle();
   }, [initVehicle]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveAddress(
+      point: { lat: number; lng: number },
+      currentValue: string,
+      setter: (value: string) => void,
+      fallback: string
+    ) {
+      if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng) || currentValue.trim()) {
+        return;
+      }
+
+      try {
+        const result = await Location.reverseGeocodeAsync({
+          latitude: point.lat,
+          longitude: point.lng,
+        });
+        if (cancelled) return;
+
+        const nextAddress = formatOfficialAddressFromGeocode(result[0], fallback);
+        if (nextAddress) {
+          setter(nextAddress);
+        }
+      } catch {
+        if (!cancelled && fallback.trim()) {
+          setter(fallback.trim());
+        }
+      }
+    }
+
+    void resolveAddress(
+      start,
+      startOfficialAddress,
+      setStartOfficialAddress,
+      typeof startLabelParam === "string" && !isCoordinateLikeLabel(startLabelParam)
+        ? startLabelParam
+        : ""
+    );
+    void resolveAddress(
+      end,
+      endOfficialAddress,
+      setEndOfficialAddress,
+      typeof endLabelParam === "string" && !isCoordinateLikeLabel(endLabelParam)
+        ? endLabelParam
+        : ""
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    end,
+    endLabelParam,
+    endOfficialAddress,
+    start,
+    startLabelParam,
+    startOfficialAddress,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -296,14 +401,40 @@ export default function RideCreationScreen() {
       </View>
 
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Очих газар</Text>
+        <Text style={styles.sectionTitle}>Эхлэх цэгийн нэршил</Text>
         <Text style={styles.sectionBody}>
-          Аялал хайж буй хүнд хамгийн ойлгомжтой байдлаар destination-ээ нэрлээрэй.
+          Албан ёсны байршлыг map-аас авна. Харин зорчигч таныг олоход туслах яг уулзах цэгийн нэршлийг гараар бичнэ.
         </Text>
+        <View style={styles.officialAddressBox}>
+          <Text style={styles.officialAddressLabel}>Албан ёсны эхлэх хаяг</Text>
+          <Text style={styles.officialAddressValue}>
+            {startOfficialAddress || "Байршлын мэдээлэл авч байна..."}
+          </Text>
+        </View>
+        <TextInput
+          value={startLocationName}
+          onChangeText={setStartLocationName}
+          placeholder="Жишээ: 34-р байрны зүүн талын зогсоол"
+          placeholderTextColor={AppTheme.colors.textMuted}
+          style={styles.input}
+        />
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Очих газрын нэршил</Text>
+        <Text style={styles.sectionBody}>
+          Албан ёсны очих хаягийг сонгосон байршлаас авна. Доор нь хэрэглэгчдэд ойлгомжтой богино нэршлээ бичнэ.
+        </Text>
+        <View style={styles.officialAddressBox}>
+          <Text style={styles.officialAddressLabel}>Албан ёсны очих хаяг</Text>
+          <Text style={styles.officialAddressValue}>
+            {endOfficialAddress || "Байршлын мэдээлэл авч байна..."}
+          </Text>
+        </View>
         <TextInput
           value={endLocationName}
           onChangeText={setEndLocationName}
-          placeholder="Жишээ: Сүхбаатарын талбай"
+          placeholder="Жишээ: Цэцэг төвийн урд хаалга"
           placeholderTextColor={AppTheme.colors.textMuted}
           style={styles.input}
         />
@@ -544,6 +675,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     marginTop: 8,
+  },
+  officialAddressBox: {
+    marginTop: 14,
+    borderRadius: AppTheme.radius.md,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    backgroundColor: AppTheme.colors.cardSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  officialAddressLabel: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 12,
+    marginBottom: 5,
+  },
+  officialAddressValue: {
+    color: AppTheme.colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
   },
   input: {
     marginTop: 16,

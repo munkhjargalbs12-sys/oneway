@@ -16,6 +16,7 @@ import {
   type RideScope,
 } from "@/services/rideSearch";
 import { formatRideDate } from "@/services/rideDate";
+import { getRideLocationDisplay } from "@/services/rideLocations";
 import { isRideBeforeToday } from "@/services/rideTiming";
 import { showLocationUsageReminder } from "@/services/locationUsageReminder";
 import { useFocusEffect } from "@react-navigation/native";
@@ -71,17 +72,6 @@ function getRideOwnerName(ride: any) {
     ride?.driver?.name ||
     "Хэрэглэгч"
   );
-}
-
-function getLocationLabel(value: unknown, fallback: string) {
-  const normalized = String(value || "").trim();
-  return normalized || fallback;
-}
-
-function getRouteLabel(ride: any) {
-  const startLocation = getLocationLabel(ride?.start_location, "Эхлэх цэг тодорхойгүй");
-  const endLocation = getLocationLabel(ride?.end_location, "Очих газар тодорхойгүй");
-  return `${startLocation} → ${endLocation}`;
 }
 
 function formatPointLabel(point: SearchPoint | null, label?: string | null) {
@@ -529,7 +519,8 @@ export default function RideListScreen() {
             bookingStatusLabelByRide[rideId] ||
             (bookingStatus ? getBookingStatusLabel(bookingStatus) : "");
           const isBooked = bookedRideIds.includes(rideId);
-          const routeLabel = getRouteLabel(item);
+          const startDisplay = getRideLocationDisplay(item, "start", "Эхлэх газар тодорхойгүй");
+          const endDisplay = getRideLocationDisplay(item, "end", "Очих газар тодорхойгүй");
           const showBookCta = !isBooked && availableSeats > 0 && isBookableStatus;
 
           return (
@@ -565,7 +556,21 @@ export default function RideListScreen() {
 
               <View style={styles.routeRow}>
                 <View style={styles.routeCopy}>
-                  <Text style={styles.routeLabel}>{routeLabel}</Text>
+                  <View style={styles.routePointBlock}>
+                    <Text style={styles.routePointLabel}>Эхлэх газар</Text>
+                    <Text style={styles.routeOfficialText}>{startDisplay.official}</Text>
+                    {startDisplay.manual ? (
+                      <Text style={styles.routeManualText}>{startDisplay.manual}</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.routeConnector} />
+                  <View style={styles.routePointBlock}>
+                    <Text style={styles.routePointLabel}>Очих газар</Text>
+                    <Text style={styles.routeOfficialText}>{endDisplay.official}</Text>
+                    {endDisplay.manual ? (
+                      <Text style={styles.routeManualText}>{endDisplay.manual}</Text>
+                    ) : null}
+                  </View>
                   <Text style={styles.routeMeta}>
                     {activeScope === "intercity" ? "Хот хоорондын чиглэл" : "Хот доторх чиглэл"}
                   </Text>
@@ -896,12 +901,38 @@ const styles = StyleSheet.create({
   routeCopy: {
     flex: 1,
   },
-  routeLabel: {
+  routePointBlock: {
+    marginBottom: 6,
+  },
+  routePointLabel: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 3,
+    textTransform: "uppercase",
+  },
+  routeOfficialText: {
     color: AppTheme.colors.text,
     fontFamily: AppFontFamily,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    lineHeight: 24,
+    lineHeight: 22,
+  },
+  routeManualText: {
+    color: AppTheme.colors.textMuted,
+    fontFamily: AppFontFamily,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  routeConnector: {
+    width: 2,
+    height: 14,
+    borderRadius: 1,
+    backgroundColor: AppTheme.colors.border,
+    marginLeft: 4,
+    marginBottom: 6,
   },
   routeMeta: {
     color: AppTheme.colors.textMuted,
