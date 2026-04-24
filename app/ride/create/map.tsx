@@ -1,3 +1,6 @@
+import type { AppMapRef } from "@/components/AppMap";
+// eslint-disable-next-line import/no-unresolved
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "@/components/AppMap";
 import MapOverlayBackButton from "@/components/MapOverlayBackButton";
 import MapTypeHint from "@/components/MapTypeHint";
 import MapTypeToggle, { type MapTypeOption } from "@/components/MapTypeToggle";
@@ -8,7 +11,6 @@ import type { PlaceDetails } from "@/services/placeSearch";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 
 type Point = { latitude: number; longitude: number };
 
@@ -33,7 +35,7 @@ export default function CreateWayRoute() {
   const startLat = Number(startLatRaw);
   const startLng = Number(startLngRaw);
 
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<AppMapRef | null>(null);
   const routePreviewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [end, setEnd] = useState<Point | null>(null);
   const [routeCoords, setRouteCoords] = useState<Point[]>([]);

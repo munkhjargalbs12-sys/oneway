@@ -1,3 +1,6 @@
+import type { AppMapRef } from "@/components/AppMap";
+// eslint-disable-next-line import/no-unresolved
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "@/components/AppMap";
 import MapTypeHint from "@/components/MapTypeHint";
 import MapTypeToggle, { type MapTypeOption } from "@/components/MapTypeToggle";
 import { AppFontFamily, AppTheme } from "@/constants/theme";
@@ -12,7 +15,7 @@ import {
   syncPushTokenWithBackend,
 } from "@/services/pushNotifications";
 import { formatRideDate } from "@/services/rideDate";
-import { getRideLocationDisplay, getRideRouteTitle } from "@/services/rideLocations";
+import { getRideLocationDisplay } from "@/services/rideLocations";
 import { syncRideReminderNotificationsFromServer } from "@/services/rideReminders";
 import { getRideStartDate } from "@/services/rideTiming";
 import polyline from "@mapbox/polyline";
@@ -33,7 +36,6 @@ import {
   View,
 } from "react-native";
 import * as Location from "expo-location";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { apiFetch } from "../../services/apiClient";
 import { isGuestMode } from "../../services/authStorage";
 import { playActionSuccessSound } from "../../services/notificationSound";
@@ -60,6 +62,7 @@ const MEETUP_TRACKING_LEAD_MINUTES = 30;
 const MEETUP_TRACKING_GRACE_MINUTES = 45;
 const MEETUP_CHECK_IN_RETRY_MS = 30 * 1000;
 const MEETUP_CHECK_IN_RETRY_DELAY_MS = 5 * 1000;
+const DEFAULT_MEETUP_START_RADIUS_METERS = 50;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -265,7 +268,7 @@ export default function RideDetail() {
   const [meetupPin, setMeetupPin] = useState("");
   const [meetupPinLoading, setMeetupPinLoading] = useState(false);
 
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<AppMapRef | null>(null);
   const meetupLocationAlertShownRef = useRef(false);
 
   const decodePolyline = (encoded: string) =>
@@ -572,7 +575,9 @@ export default function RideDetail() {
       if (!response) {
         throw (
           lastError ||
-          new Error("30 секунд шалгахад уулзах цэгээс 15м дотор баталгаажсангүй.")
+          new Error(
+            `30 секунд шалгахад уулзах цэгээс ${DEFAULT_MEETUP_START_RADIUS_METERS}м дотор баталгаажсангүй.`
+          )
         );
       }
 
@@ -776,6 +781,7 @@ export default function RideDetail() {
     try {
       await apiFetch(`/rides/${ride.id}/${action}`, { method: "PATCH" });
       void playActionSuccessSound();
+      void syncRideReminderNotificationsFromServer();
       router.back();
     } catch {
       Alert.alert("Алдаа", "Үйлдэл амжилтгүй");
@@ -807,6 +813,7 @@ export default function RideDetail() {
       setMeetupPresence(response);
       setMeetupPin("");
       void playActionSuccessSound();
+      void syncRideReminderNotificationsFromServer();
 
       if (response?.ride_started) {
         await loadRide(rideId);
@@ -886,7 +893,6 @@ export default function RideDetail() {
 
   const rideDateText = formatRideDate(ride?.ride_date, "Огноо байхгүй");
   const ownerName = getRideOwnerName(ride);
-  const routeTitle = getRideRouteTitle(ride);
   const startDisplay = getRideLocationDisplay(ride, "start", "Эхлэх газар тодорхойгүй");
   const endDisplay = getRideLocationDisplay(ride, "end", "Очих газар тодорхойгүй");
   const seatImageIndex = Math.min(Math.max(seatsLeft, 1), 4);
@@ -940,8 +946,10 @@ export default function RideDetail() {
   const rideStartDate = getRideStartDate(ride);
   const isMeetupWindowUpcoming =
     rideStartDate ? rideStartDate.getTime() > Date.now() && !meetupPresence : false;
+  const meetupStartRadiusMeters =
+    Number(meetupPresence?.required_start_radius_meters) || DEFAULT_MEETUP_START_RADIUS_METERS;
   const meetupInfoCopy = meetupPresence
-    ? `Эхлэх цэгээс ${meetupPresence?.required_start_radius_meters ?? 15}м дотор "Би уулзах цэгт ирсэн" товч дарж байршлаа баталгаажуулна. Дараа нь зорчигч жолоочийн PIN кодоор ирцээ батална.`
+    ? `Эхлэх цэгээс ${meetupStartRadiusMeters}м дотор "Би уулзах цэгт ирсэн" товч дарж байршлаа баталгаажуулна. Дараа нь зорчигч жолоочийн PIN кодоор ирцээ батална.`
     : "Ирцийн шалгалт ride эхлэхээс 30 минутын өмнө идэвжинэ.";
 
   const meetupPinLength = Number(meetupPresence?.meetup_pin_length || 4);
@@ -997,8 +1005,34 @@ export default function RideDetail() {
               longitudeDelta: 0.05,
             }}
           >
-            <Marker coordinate={{ latitude: ride.start_lat, longitude: ride.start_lng }} />
-            <Marker coordinate={{ latitude: ride.end_lat, longitude: ride.end_lng }} />
+            <Marker
+              coordinate={{ latitude: ride.start_lat, longitude: ride.start_lng }}
+              anchor={{ x: 0.5, y: 0.78 }}
+              tracksViewChanges
+            >
+              <View style={styles.routeMarkerWrap} collapsable={false}>
+                <View style={[styles.routeMarkerPin, styles.routeMarkerStartPin]}>
+                  <Text style={styles.routeMarkerPinText}>Э</Text>
+                </View>
+                <View style={[styles.routeMarkerLabel, styles.routeMarkerStartLabel]}>
+                  <Text style={styles.routeMarkerLabelText}>Эхлэх</Text>
+                </View>
+              </View>
+            </Marker>
+            <Marker
+              coordinate={{ latitude: ride.end_lat, longitude: ride.end_lng }}
+              anchor={{ x: 0.5, y: 0.78 }}
+              tracksViewChanges
+            >
+              <View style={styles.routeMarkerWrap} collapsable={false}>
+                <View style={[styles.routeMarkerPin, styles.routeMarkerEndPin]}>
+                  <Text style={styles.routeMarkerPinText}>О</Text>
+                </View>
+                <View style={[styles.routeMarkerLabel, styles.routeMarkerEndLabel]}>
+                  <Text style={styles.routeMarkerLabelText}>Очих</Text>
+                </View>
+              </View>
+            </Marker>
             {ride.polyline && (
               <Polyline
                 coordinates={decodePolyline(ride.polyline)}
@@ -1029,8 +1063,6 @@ export default function RideDetail() {
             <Text style={styles.statusBadgeText}>{ride.status}</Text>
           </View>
         </View>
-
-        <Text style={styles.title}>{routeTitle}</Text>
 
         <View style={styles.locationSummary}>
           <View style={styles.locationSummaryItem}>
@@ -1158,7 +1190,8 @@ export default function RideDetail() {
             </Text>
             <Text style={styles.meetupLocationBody}>
               Энэ товчийг уулзах цэг дээрээ ирсний дараа дарна. Бид таны одоогийн
-              байршлыг эхлэх цэгээс 15м радиуст 30 секундийн турш шалгана.
+              байршлыг эхлэх цэгээс {meetupStartRadiusMeters}м радиуст 30 секундийн турш
+              шалгана.
             </Text>
 
             <TouchableOpacity
@@ -1489,6 +1522,55 @@ const styles = StyleSheet.create({
   map: {
     height: 280,
     borderRadius: 22,
+  },
+  routeMarkerWrap: {
+    minWidth: 52,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    overflow: "visible",
+  },
+  routeMarkerPin: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: AppTheme.colors.white,
+    ...AppTheme.shadow.card,
+  },
+  routeMarkerStartPin: {
+    backgroundColor: AppTheme.colors.accentDeep,
+  },
+  routeMarkerEndPin: {
+    backgroundColor: "#c86b3a",
+  },
+  routeMarkerPinText: {
+    color: AppTheme.colors.white,
+    fontSize: 14,
+    fontWeight: "800",
+    fontFamily: AppFontFamily,
+  },
+  routeMarkerLabel: {
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: AppTheme.radius.pill,
+    backgroundColor: "rgba(255,253,248,0.96)",
+    borderWidth: 1,
+    ...AppTheme.shadow.card,
+  },
+  routeMarkerStartLabel: {
+    borderColor: "#c8ddd4",
+  },
+  routeMarkerEndLabel: {
+    borderColor: "#efcfbf",
+  },
+  routeMarkerLabelText: {
+    color: AppTheme.colors.text,
+    fontSize: 10,
+    fontWeight: "700",
+    fontFamily: AppFontFamily,
   },
   mapTypeWrap: {
     position: "absolute",

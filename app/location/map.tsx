@@ -1,3 +1,6 @@
+import type { AppMapRef } from "@/components/AppMap";
+// eslint-disable-next-line import/no-unresolved
+import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "@/components/AppMap";
 import FeatureHintBubble from "@/components/FeatureHintBubble";
 import MapOverlayBackButton from "@/components/MapOverlayBackButton";
 import MapTypeHint from "@/components/MapTypeHint";
@@ -9,7 +12,6 @@ import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Animated, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import MapView, { Circle, Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import type { PlaceDetails } from "@/services/placeSearch";
 
 type Point = {
@@ -55,7 +57,7 @@ export default function MapPickScreen() {
   const [mapType, setMapType] = useState<MapTypeOption>("standard");
   const [hintQueue, setHintQueue] = useState<HintId[]>([]);
   const [scale, setScale] = useState<Scale>("5000");
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<AppMapRef | null>(null);
   const autoGpsRan = useRef(false);
   const markerPulse = useRef(new Animated.Value(0)).current;
   const meetingIcon = require("../../assets/icons/meeting.png");
@@ -65,6 +67,7 @@ export default function MapPickScreen() {
   const pointKey = Array.isArray(params.pointKey) ? params.pointKey[0] : params.pointKey;
   const isEndPoint = pointKey === "end";
   const selectedPointLabel = pointLabel || (point ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}` : "");
+  const selectedPointMarkerLabel = isEndPoint ? "Очих цэг" : "Эхлэх цэг";
   const fieldPlaceholder = isEndPoint ? "Очих байршил хайх" : "Эхлэх байршил хайх";
   const selectedPointText = isEndPoint ? "Очих цэг сонгогдсон" : "Эхлэх цэг сонгогдсон";
   const emptyPointText = isEndPoint
@@ -385,13 +388,20 @@ export default function MapPickScreen() {
         ) : null}
 
         {point ? (
-          <Marker coordinate={point} anchor={{ x: 0.5, y: 0.86 }} zIndex={18} tracksViewChanges>
+          <Marker coordinate={point} anchor={{ x: 0.5, y: 0.76 }} zIndex={18} tracksViewChanges>
             <View style={styles.selectedPointMarkerWrap} collapsable={false}>
-              <Animated.Image
-                source={meetingIcon}
-                style={[styles.selectedPointMarker, meetingMarkerPulseStyle]}
-                resizeMode="contain"
-              />
+              <View style={styles.selectedPointMarkerIconWrap}>
+                <Animated.Image
+                  source={meetingIcon}
+                  style={[styles.selectedPointMarker, meetingMarkerPulseStyle]}
+                  resizeMode="contain"
+                />
+              </View>
+              <View style={styles.selectedPointMarkerLabelPill}>
+                <Text style={styles.selectedPointMarkerLabelText}>
+                  {selectedPointMarkerLabel}
+                </Text>
+              </View>
             </View>
           </Marker>
         ) : null}
@@ -704,10 +714,37 @@ const styles = StyleSheet.create({
     height: 46,
   },
   selectedPointMarkerWrap: {
-    width: 46,
-    height: 46,
+    width: 96,
+    height: 92,
+    paddingTop: 6,
+    paddingBottom: 4,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    overflow: "visible",
+  },
+  selectedPointMarkerIconWrap: {
+    width: 64,
+    height: 64,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
+  },
+  selectedPointMarkerLabelPill: {
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: AppTheme.radius.pill,
+    backgroundColor: "rgba(255,253,248,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(222,212,197,0.92)",
+    ...AppTheme.shadow.card,
+  },
+  selectedPointMarkerLabelText: {
+    color: AppTheme.colors.accentDeep,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "700",
+    fontFamily: AppFontFamily,
   },
   bottomWrap: {
     position: "absolute",
