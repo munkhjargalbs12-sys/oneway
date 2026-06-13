@@ -1,6 +1,5 @@
 import { AppTheme } from "@/constants/theme";
 import * as NavigationBar from "expo-navigation-bar";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import AuthModal from "../../components/AuthModal";
@@ -18,7 +17,8 @@ import {
   View,
 } from "react-native";
 
-const { height } = Dimensions.get("window");
+const { height, width } = Dimensions.get("window");
+const SYSTEM_BAR_BACKGROUND = AppTheme.colors.canvas;
 
 export default function LoginScreen() {
   const [openAuth, setOpenAuth] = useState(false);
@@ -43,75 +43,57 @@ export default function LoginScreen() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
     NavigationBar.setButtonStyleAsync("dark").catch(() => null);
-    NavigationBar.setBackgroundColorAsync(AppTheme.colors.canvas).catch(() => null);
+    NavigationBar.setBackgroundColorAsync(SYSTEM_BAR_BACKGROUND).catch(() => null);
   }, []);
 
   return (
     <View style={styles.safe}>
-      <StatusBar backgroundColor={AppTheme.colors.canvas} barStyle="dark-content" />
+      <StatusBar backgroundColor={SYSTEM_BAR_BACKGROUND} barStyle="dark-content" />
 
       <View style={styles.container}>
-        <LinearGradient
-          colors={[
-            AppTheme.colors.accentDeep,
-            AppTheme.colors.accent,
-            "#7c9c88",
+        <Animated.View
+          style={[
+            styles.heroArea,
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
           ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
         >
-          <View style={styles.glowLarge} />
-          <View style={styles.glowSmall} />
-
           <Image
             source={require("../../assets/images/logo.png")}
-            style={styles.logo}
+            style={styles.logoMark}
             resizeMode="contain"
           />
 
-          <Animated.View
-            style={{
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            }}
-          >
-            <Text style={styles.eyebrow}>One Way</Text>
+          <View style={styles.heroIllustration}>
             <Image
-              source={require("../../assets/images/oneWay.png")}
-              style={styles.titleImage}
+              source={require("../../assets/images/city1.png")}
+              style={styles.heroCity}
               resizeMode="contain"
             />
-            <Text style={styles.subtitle}>
-              Хотын түгжрэлийг хэн нэгэн биш та, би, бид хамтдаа бууруулж чадна
-            </Text>
-          </Animated.View>
+            <Image
+              source={require("../../assets/images/car3.png")}
+              style={styles.heroCar}
+              resizeMode="contain"
+            />
+          </View>
+        </Animated.View>
 
-          <Animated.Image
-            source={require("../../assets/images/car3.png")}
-            style={[
-              styles.hero,
-              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-            ]}
+        <Animated.View
+          style={[
+            styles.copyBlock,
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+          ]}
+        >
+          <Image
+            source={require("../../assets/images/oneWay.png")}
+            style={styles.titleImage}
             resizeMode="contain"
           />
+          <Text style={styles.subtitle}>Итгэлцэл биднийг холбодог</Text>
+        </Animated.View>
 
-          <View style={styles.heroFooterRow}>
-            <View style={styles.heroMetric}>
-              <Text style={styles.heroMetricValue}>Хурдан</Text>
-              <Text style={styles.heroMetricLabel}>Нэвтрэх</Text>
-            </View>
-            <View style={styles.heroMetricDivider} />
-            <View style={styles.heroMetric}>
-              <Text style={styles.heroMetricValue}>Аюулгүй</Text>
-              <Text style={styles.heroMetricLabel}>Аялал</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.actionCard}>
+        <View style={styles.actionStack}>
           <TouchableOpacity style={styles.primaryButton} onPress={() => setOpenAuth(true)}>
-            <Text style={styles.primaryButtonText}>Нэвтрэх</Text>
+            <Text style={styles.primaryButtonText}>Start</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -131,18 +113,18 @@ export default function LoginScreen() {
             <Text style={styles.guestText}>Зочин байдлаар үргэлжлүүлэх</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.push("/api-check")}>
-            <Text style={styles.debugText}>API шалгах</Text>
-          </TouchableOpacity>
+          {__DEV__ ? (
+            <TouchableOpacity onPress={() => router.push("/api-check")}>
+              <Text style={styles.debugText}>API шалгах</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        <View style={styles.footer}>
-          <Image
-            source={require("../../assets/images/city1.png")}
-            style={styles.bottomImage}
-            resizeMode="contain"
-          />
-        </View>
+        <Image
+          source={require("../../assets/images/city1.png")}
+          style={styles.bottomImage}
+          resizeMode="contain"
+        />
       </View>
 
       <AuthModal
@@ -167,127 +149,88 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: AppTheme.colors.canvas,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 18,
-  },
-  heroCard: {
-    position: "relative",
-    borderRadius: 32,
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 18,
-    minHeight: Math.min(height * 0.56, 470),
+    paddingHorizontal: 24,
+    paddingTop: 18,
+    paddingBottom: 22,
+    alignItems: "center",
     overflow: "hidden",
-    ...AppTheme.shadow.floating,
   },
-  glowLarge: {
-    position: "absolute",
-    top: -60,
-    right: -30,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: "rgba(255,255,255,0.12)",
-  },
-  glowSmall: {
-    position: "absolute",
-    bottom: -35,
-    left: -20,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255,255,255,0.09)",
-  },
-  logo: {
-    width: 92,
-    height: 28,
-    marginBottom: 18,
-  },
-  eyebrow: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  titleImage: {
-    width: "88%",
-    maxWidth: 320,
-    height: 74,
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: "rgba(255,255,255,0.86)",
-    lineHeight: 23,
-    maxWidth: 310,
-  },
-  hero: {
+  heroArea: {
     width: "100%",
-    height: Math.min(height * 0.24, 220),
-    marginTop: 18,
+    minHeight: Math.min(height * 0.46, 410),
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingTop: 10,
+    zIndex: 1,
+  },
+  logoMark: {
+    width: 74,
+    height: 94,
     marginBottom: 10,
   },
-  heroFooterRow: {
-    flexDirection: "row",
+  heroIllustration: {
+    width: "100%",
+    height: Math.min(height * 0.28, 250),
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    justifyContent: "flex-end",
+  },
+  heroCity: {
+    position: "absolute",
+    bottom: Math.min(height * 0.06, 48),
+    width: Math.min(width * 0.96, 380),
+    height: Math.min(height * 0.13, 112),
+    opacity: 0.72,
+  },
+  heroCar: {
+    width: Math.min(width * 1.06, 410),
+    height: Math.min(height * 0.22, 206),
+  },
+  copyBlock: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 2,
+    marginBottom: 24,
+    zIndex: 1,
+  },
+  titleImage: {
+    width: Math.min(width * 0.7, 286),
+    height: 66,
+  },
+  subtitle: {
+    marginTop: 8,
+    fontSize: 18,
+    color: AppTheme.colors.text,
+    lineHeight: 26,
+    textAlign: "center",
+    maxWidth: 250,
+  },
+  actionStack: {
+    width: "100%",
     marginTop: "auto",
-  },
-  heroMetric: {
-    flex: 1,
-  },
-  heroMetricDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    marginHorizontal: 14,
-  },
-  heroMetricValue: {
-    color: AppTheme.colors.white,
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  heroMetricLabel: {
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 12,
-  },
-  actionCard: {
-    backgroundColor: AppTheme.colors.card,
-    borderRadius: 28,
-    padding: 18,
-    marginTop: -24,
-    marginHorizontal: 8,
-    borderWidth: 1,
-    borderColor: AppTheme.colors.border,
-    ...AppTheme.shadow.card,
+    marginBottom: Math.min(height * 0.08, 70),
+    zIndex: 1,
   },
   primaryButton: {
     height: 56,
     backgroundColor: AppTheme.colors.accent,
-    borderRadius: 18,
+    borderRadius: AppTheme.radius.pill,
     alignItems: "center",
     justifyContent: "center",
+    ...AppTheme.shadow.card,
   },
   primaryButtonText: {
     color: AppTheme.colors.white,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
   },
   secondaryButton: {
     height: 54,
-    borderRadius: 18,
+    borderRadius: AppTheme.radius.pill,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderColor: AppTheme.colors.border,
-    backgroundColor: AppTheme.colors.cardSoft,
+    backgroundColor: AppTheme.colors.card,
     marginTop: 12,
   },
   secondaryButtonText: {
@@ -310,14 +253,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
   },
-  footer: {
-    width: "100%",
-    alignItems: "center",
-    marginTop: 10,
-  },
   bottomImage: {
-    width: "100%",
-    height: Math.min(height * 0.14, 124),
-    opacity: 0.92,
+    position: "absolute",
+    bottom: -12,
+    width: Math.min(width * 1.2, 470),
+    height: Math.min(height * 0.15, 132),
+    opacity: 0.78,
   },
 });

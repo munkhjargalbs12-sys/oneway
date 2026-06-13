@@ -25,7 +25,7 @@ export async function ensureRideReminderNotificationChannel() {
     await Notifications.setNotificationChannelAsync(
       RIDE_REMINDER_NOTIFICATION_CHANNEL_ID,
       {
-        name: "Ride reminders",
+        name: "OneWay ride alerts",
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 400, 160, 400],
         lightColor: "#C47B55",

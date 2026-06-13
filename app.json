@@ -2,12 +2,20 @@
   "expo": {
     "name": "one-way",
     "slug": "one-way",
-    "version": "1.0.1",
-    "runtimeVersion": "1.0.0",
+    "version": "1.0.3",
+    "runtimeVersion": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "oneway",
     "userInterfaceStyle": "automatic",
+    "androidStatusBar": {
+      "backgroundColor": "#F7FAF8",
+      "barStyle": "dark-content"
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#F7FAF8",
+      "barStyle": "dark-content"
+    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -55,7 +63,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#F7FAF8",
           "dark": {
             "backgroundColor": "#000000"
           }

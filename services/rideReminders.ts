@@ -17,6 +17,7 @@ const REMINDER_SOUND = RIDE_REMINDER_NOTIFICATION_SOUND;
 const REMINDER_LEAD_MINUTES = 10;
 const IMMEDIATE_REMINDER_DELAY_MS = 2000;
 const IMMEDIATE_REMINDER_STATE_KEY = "oneway_ride_reminder_immediate_state";
+const LOCAL_RIDE_REMINDERS_ENABLED = false;
 
 type ReminderScheduleKind = "scheduled" | "late";
 
@@ -411,6 +412,11 @@ export async function syncRideReminderNotifications({
   myRides: any;
   bookings: any;
 }) {
+  if (!LOCAL_RIDE_REMINDERS_ENABLED) {
+    await clearRideReminderNotifications();
+    return false;
+  }
+
   const hasPermission = await ensureLocalNotificationPermission();
   if (!hasPermission) {
     return false;

@@ -250,9 +250,11 @@ export default function RegisterScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => router.push("/api-check")}>
-            <Text style={styles.debugLink}>API шалгах</Text>
-          </TouchableOpacity>
+          {__DEV__ ? (
+            <TouchableOpacity onPress={() => router.push("/api-check")}>
+              <Text style={styles.debugLink}>API шалгах</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </ScrollView>
     </View>

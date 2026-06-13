@@ -155,6 +155,7 @@ export default function RideCreationScreen() {
   const [endLocationName, setEndLocationName] = useState(
     typeof endNameParam === "string" ? endNameParam : ""
   );
+  const [stopoverNote, setStopoverNote] = useState("");
   const [date, setDate] = useState(getDefaultRideStartDate);
   const [time, setTime] = useState(getDefaultRideStartDate);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -186,6 +187,7 @@ export default function RideCreationScreen() {
       const days = selectedWeekdays.map((index) => WEEKDAY_MAP[index]);
       const normalizedStartLocationName = startLocationName.trim();
       const normalizedEndLocationName = endLocationName.trim();
+      const normalizedStopoverNote = stopoverNote.trim();
 
       const routeRes = await fetch(`${API_URL}/route`, {
         method: "POST",
@@ -206,6 +208,7 @@ export default function RideCreationScreen() {
           end_location: normalizedEndLocationName,
           end_address: endOfficialAddress.trim(),
           end_place_name: normalizedEndLocationName,
+          stopover_note: normalizedStopoverNote || null,
           ride_date: rideDate,
           start_time: startTime,
           polyline: routeData.polyline,
@@ -437,6 +440,25 @@ export default function RideCreationScreen() {
           placeholder="Жишээ: Цэцэг төвийн урд хаалга"
           placeholderTextColor={AppTheme.colors.textMuted}
           style={styles.input}
+        />
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Түр зогсох газар</Text>
+        <Text style={styles.sectionBody}>
+          Замдаа богино хугацаанд саатах шаардлагатай бол зорчигчдод харагдах тайлбараа энд бичнэ.
+          Заавал бөглөхгүй байж болно.
+        </Text>
+        <TextInput
+          value={stopoverNote}
+          onChangeText={setStopoverNote}
+          placeholder="Жишээ: 132-р цэцэрлэг дээр 10 минут зогсоод хүүхдээ оруулж өгнө"
+          placeholderTextColor={AppTheme.colors.textMuted}
+          style={[styles.input, styles.noteInput]}
+          multiline
+          numberOfLines={4}
+          maxLength={500}
+          textAlignVertical="top"
         />
       </View>
 
@@ -705,6 +727,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 15,
     color: AppTheme.colors.text,
+  },
+  noteInput: {
+    minHeight: 118,
+    lineHeight: 21,
   },
   rowBetween: {
     flexDirection: "row",

@@ -66,3 +66,23 @@ export function shouldShowRideOnHome(ride: any, now = new Date()) {
 
   return !isRideBeforeToday(ride, now);
 }
+
+export function shouldShowBookedRideOnHome(ride: any, now = new Date()) {
+  if (!ride) {
+    return false;
+  }
+
+  const status = String(ride?.status ?? "").trim().toLowerCase();
+
+  if (COMPLETED_RIDE_STATUSES.has(status)) {
+    return false;
+  }
+
+  const startDate = getRideStartDate(ride);
+  if (!startDate) {
+    return shouldShowRideOnHome(ride, now);
+  }
+
+  const hideAfterMs = startDate.getTime() + 24 * 60 * 60 * 1000;
+  return now.getTime() < hideAfterMs;
+}

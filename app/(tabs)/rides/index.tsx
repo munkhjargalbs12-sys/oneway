@@ -521,6 +521,7 @@ export default function RideListScreen() {
           const isBooked = bookedRideIds.includes(rideId);
           const startDisplay = getRideLocationDisplay(item, "start", "Эхлэх газар тодорхойгүй");
           const endDisplay = getRideLocationDisplay(item, "end", "Очих газар тодорхойгүй");
+          const stopoverNote = String(item?.stopover_note || "").trim();
           const showBookCta = !isBooked && availableSeats > 0 && isBookableStatus;
 
           return (
@@ -590,6 +591,12 @@ export default function RideListScreen() {
                     <View style={styles.metaChip}>
                       <Text style={styles.metaChipText}>{availableSeats} сул суудал</Text>
                     </View>
+
+                    {stopoverNote ? (
+                      <View style={styles.metaChip}>
+                        <Text style={styles.metaChipText}>Түр зогсоно</Text>
+                      </View>
+                    ) : null}
 
                     {isBooked && bookingStatusLabel ? (
                       <View

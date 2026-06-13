@@ -14,6 +14,9 @@ import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 type Point = { latitude: number; longitude: number };
 
+const meetupCarMarkerIcon = require("../../../assets/icons/meetup-car-marker.png");
+const ROUTE_REQUEST_TIMEOUT_MS = 15000;
+
 function formatCoordinate(value: number) {
   return value.toFixed(4);
 }
@@ -111,6 +114,9 @@ export default function CreateWayRoute() {
   }
 
   async function fetchRoute(destination: Point) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ROUTE_REQUEST_TIMEOUT_MS);
+
     try {
       setLoading(true);
 
@@ -123,6 +129,7 @@ export default function CreateWayRoute() {
           start: { lat: start.latitude, lng: start.longitude },
           end: { lat: destination.latitude, lng: destination.longitude },
         }),
+        signal: controller.signal,
       });
 
       const text = await response.text();
@@ -144,6 +151,7 @@ export default function CreateWayRoute() {
       console.log("Route fetch failed:", error);
       Alert.alert("Алдаа", "Backend холбогдсонгүй");
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   }
@@ -211,7 +219,7 @@ export default function CreateWayRoute() {
           applyDestination(destination, "", null);
         }}
       >
-        <Marker coordinate={start} pinColor={AppTheme.colors.accent} />
+        <Marker coordinate={start} anchor={{ x: 0.5, y: 0.96 }} image={meetupCarMarkerIcon} zIndex={30} />
         {end ? <Marker coordinate={end} pinColor={AppTheme.colors.badge} /> : null}
         {routeCoords.length > 0 ? (
           <Polyline coordinates={routeCoords} strokeWidth={4} strokeColor={AppTheme.colors.accentDeep} />

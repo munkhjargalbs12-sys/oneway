@@ -43,6 +43,20 @@ export default function ApiCheckScreen() {
   const [results, setResults] = useState<CheckResult[]>([]);
   const [lastRunAt, setLastRunAt] = useState("");
 
+  if (!__DEV__) {
+    return (
+      <View style={styles.blockedContainer}>
+        <Text style={styles.blockedTitle}>Diagnostics disabled</Text>
+        <Text style={styles.blockedBody}>
+          API шалгалтын самбар зөвхөн development build дээр ажиллана.
+        </Text>
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.back()}>
+          <Text style={styles.secondaryButtonText}>Буцах</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const runChecks = async () => {
     setLoading(true);
     setResults([]);
@@ -165,6 +179,25 @@ export default function ApiCheckScreen() {
 }
 
 const styles = StyleSheet.create({
+  blockedContainer: {
+    flex: 1,
+    backgroundColor: AppTheme.colors.canvas,
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  blockedTitle: {
+    color: AppTheme.colors.text,
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 10,
+    fontFamily: AppFontFamily,
+  },
+  blockedBody: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 18,
+  },
   container: {
     flexGrow: 1,
     paddingHorizontal: 18,

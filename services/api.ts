@@ -41,6 +41,7 @@ export type AuthResponse = {
   token?: string;
   user?: User;
   message?: string;
+  masked_email?: string;
 };
 
 async function handleResponse(res: Response): Promise<AuthResponse> {
@@ -96,6 +97,43 @@ export async function login(phone: string, password: string): Promise<AuthRespon
     return handleResponse(res);
   } catch (err) {
     return { message: buildNetworkErrorMessage("Login request", url, err) };
+  }
+}
+
+export async function requestPasswordReset(phone: string): Promise<AuthResponse> {
+  const url = `${API_URL}/auth/password/reset/request`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
+
+    return handleResponse(res);
+  } catch (err) {
+    return { message: buildNetworkErrorMessage("Password reset request", url, err) };
+  }
+}
+
+export async function confirmPasswordReset(
+  phone: string,
+  code: string,
+  password: string,
+  confirmPassword: string
+): Promise<AuthResponse> {
+  const url = `${API_URL}/auth/password/reset/confirm`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, code, password, confirmPassword }),
+    });
+
+    return handleResponse(res);
+  } catch (err) {
+    return { message: buildNetworkErrorMessage("Password reset confirm", url, err) };
   }
 }
 

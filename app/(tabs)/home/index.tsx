@@ -27,7 +27,7 @@ import {
 import { playActionSuccessSound } from "@/services/notificationSound";
 import { showLocationUsageReminder } from "@/services/locationUsageReminder";
 import { getRideLocationDisplay } from "@/services/rideLocations";
-import { shouldShowRideOnHome } from "@/services/rideTiming";
+import { shouldShowBookedRideOnHome, shouldShowRideOnHome } from "@/services/rideTiming";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -350,7 +350,7 @@ function HomeScreen() {
             };
           })
           .filter(Boolean)
-          .filter((ride: any) => shouldShowRideOnHome(ride, now));
+          .filter((ride: any) => shouldShowBookedRideOnHome(ride, now));
 
         setBookedRides(matched);
 

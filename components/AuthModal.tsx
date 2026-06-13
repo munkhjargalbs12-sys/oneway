@@ -1,9 +1,12 @@
 import { AppTheme } from "@/constants/theme";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -79,11 +82,15 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
 
   return (
     <Modal visible={visible} animationType="fade" transparent>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.overlay}
+      >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
         <View style={styles.card}>
-          <Text style={styles.eyebrow}>Нэвтрэх</Text>
+          <View style={styles.handle} />
+          <Text style={styles.eyebrow}>One-Way</Text>
           <Text style={styles.title}>Тавтай морил</Text>
           <Text style={styles.subtitle}>
             Утасны дугаар болон нууц үгээ оруулаад аяллаа үргэлжлүүлээрэй.
@@ -106,46 +113,57 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
               value={password}
               onChangeText={setPassword}
               style={styles.passwordInput}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
             <TouchableOpacity
               onPress={() => setShowPassword(!showPassword)}
               style={styles.eyeButton}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? "Нууц үг нуух" : "Нууц үг харах"}
             >
-              <Text style={styles.eyeIcon}>{showPassword ? "🙈" : "👁"}</Text>
+              <MaterialIcons
+                name={showPassword ? "visibility-off" : "visibility"}
+                size={21}
+                color={AppTheme.colors.textMuted}
+              />
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={styles.rememberRow}
-            onPress={() => setRememberMe(!rememberMe)}
-            activeOpacity={0.8}
-          >
-            <View
-              style={[
-                styles.checkbox,
-                rememberMe && styles.checkboxActive,
-              ]}
-            />
-            <Text style={styles.rememberText}>Намайг сана</Text>
-          </TouchableOpacity>
+          <View style={styles.optionRow}>
+            <TouchableOpacity
+              style={styles.rememberRow}
+              onPress={() => setRememberMe(!rememberMe)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.checkbox, rememberMe && styles.checkboxActive]}>
+                {rememberMe ? (
+                  <MaterialIcons name="check" size={14} color={AppTheme.colors.white} />
+                ) : null}
+              </View>
+              <Text style={styles.rememberText}>Намайг сана</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => {
-              onClose();
-              router.push("../(auth)/forget-password");
-            }}
-          >
-            <Text style={styles.forgotText}>Нууц үг мартсан?</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                onClose();
+                router.push("../(auth)/forget-password");
+              }}
+            >
+              <Text style={styles.forgotText}>Нууц үг мартсан?</Text>
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            onPress={() => {
-              onClose();
-              router.push("/api-check");
-            }}
-          >
-            <Text style={styles.debugLink}>API шалгах</Text>
-          </TouchableOpacity>
+          {__DEV__ ? (
+            <TouchableOpacity
+              onPress={() => {
+                onClose();
+                router.push("/api-check");
+              }}
+            >
+              <Text style={styles.debugLink}>API шалгах</Text>
+            </TouchableOpacity>
+          ) : null}
 
           {error ? (
             <View style={styles.errorCard}>
@@ -165,11 +183,11 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={onClose}>
+          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
             <Text style={styles.close}>Хаах</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -177,7 +195,7 @@ export default function AuthModal({ visible, onClose, onSuccess }: Props) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(18, 28, 24, 0.48)",
+    backgroundColor: "rgba(41, 77, 86, 0.24)",
     justifyContent: "center",
     padding: 20,
   },
@@ -189,6 +207,14 @@ const styles = StyleSheet.create({
     borderColor: AppTheme.colors.border,
     ...AppTheme.shadow.floating,
   },
+  handle: {
+    alignSelf: "center",
+    width: 42,
+    height: 4,
+    borderRadius: AppTheme.radius.pill,
+    backgroundColor: AppTheme.colors.accentSoft,
+    marginBottom: 16,
+  },
   eyebrow: {
     fontSize: 12,
     fontWeight: "700",
@@ -199,7 +225,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   title: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "700",
     marginBottom: 8,
     textAlign: "center",
@@ -210,12 +236,12 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: AppTheme.colors.textMuted,
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: 18,
   },
   input: {
     borderWidth: 1,
     borderColor: AppTheme.colors.border,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 14,
     marginBottom: 12,
     color: AppTheme.colors.text,
@@ -226,7 +252,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: AppTheme.colors.border,
-    borderRadius: 16,
+    borderRadius: 18,
     marginBottom: 12,
     backgroundColor: AppTheme.colors.cardSoft,
   },
@@ -236,24 +262,31 @@ const styles = StyleSheet.create({
     color: AppTheme.colors.text,
   },
   eyeButton: {
-    paddingHorizontal: 12,
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  eyeIcon: {
-    fontSize: 18,
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
   },
   rememberRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
   },
   checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 6,
     borderWidth: 2,
     borderColor: AppTheme.colors.accent,
     marginRight: 8,
     backgroundColor: AppTheme.colors.card,
+    alignItems: "center",
+    justifyContent: "center",
   },
   checkboxActive: {
     backgroundColor: AppTheme.colors.accent,
@@ -263,11 +296,9 @@ const styles = StyleSheet.create({
     color: AppTheme.colors.textMuted,
   },
   forgotText: {
-    marginBottom: 8,
-    textAlign: "right",
     color: AppTheme.colors.accentDeep,
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   debugLink: {
     marginBottom: 10,
@@ -281,9 +312,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 16,
-    backgroundColor: "#f7e2dc",
+    backgroundColor: "#FFF0EC",
     borderWidth: 1,
-    borderColor: "#ebc7bc",
+    borderColor: "#F3CFC5",
   },
   error: {
     color: AppTheme.colors.danger,
@@ -292,7 +323,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: AppTheme.colors.accent,
     padding: 15,
-    borderRadius: 18,
+    borderRadius: AppTheme.radius.pill,
     alignItems: "center",
     marginTop: 4,
   },
@@ -304,9 +335,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 15,
   },
+  closeButton: {
+    paddingTop: 12,
+  },
   close: {
-    marginTop: 12,
     textAlign: "center",
     color: AppTheme.colors.textMuted,
+    fontWeight: "600",
   },
 });

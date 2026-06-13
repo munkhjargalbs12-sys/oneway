@@ -61,13 +61,13 @@ export default function MapPickScreen() {
   const autoGpsRan = useRef(false);
   const markerPulse = useRef(new Animated.Value(0)).current;
   const meetingIcon = require("../../assets/icons/meeting.png");
+  const meetupCarMarkerIcon = require("../../assets/icons/meetup-car-marker.png");
   const myLocationIcon = require("../../assets/icons/my location.png");
   const activeHint = hintQueue[0] ?? null;
   const returnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const pointKey = Array.isArray(params.pointKey) ? params.pointKey[0] : params.pointKey;
   const isEndPoint = pointKey === "end";
   const selectedPointLabel = pointLabel || (point ? `${point.latitude.toFixed(4)}, ${point.longitude.toFixed(4)}` : "");
-  const selectedPointMarkerLabel = isEndPoint ? "Очих цэг" : "Эхлэх цэг";
   const fieldPlaceholder = isEndPoint ? "Очих байршил хайх" : "Эхлэх байршил хайх";
   const selectedPointText = isEndPoint ? "Очих цэг сонгогдсон" : "Эхлэх цэг сонгогдсон";
   const emptyPointText = isEndPoint
@@ -331,21 +331,6 @@ export default function MapPickScreen() {
     return () => animation.stop();
   }, [markerPulse]);
 
-  const meetingMarkerPulseStyle = {
-    transform: [
-      {
-        scale: markerPulse.interpolate({
-          inputRange: [0, 1],
-          outputRange: [1, 1.14],
-        }),
-      },
-    ],
-    opacity: markerPulse.interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.94, 1],
-    }),
-  };
-
   const currentMarkerPulseStyle = {
     transform: [
       {
@@ -388,22 +373,24 @@ export default function MapPickScreen() {
         ) : null}
 
         {point ? (
-          <Marker coordinate={point} anchor={{ x: 0.5, y: 0.76 }} zIndex={18} tracksViewChanges>
-            <View style={styles.selectedPointMarkerWrap} collapsable={false}>
-              <View style={styles.selectedPointMarkerIconWrap}>
+          isEndPoint ? (
+            <Marker coordinate={point} anchor={{ x: 0.5, y: 0.86 }} zIndex={30} tracksViewChanges>
+              <View style={styles.selectedPointMarkerWrap} collapsable={false}>
                 <Animated.Image
                   source={meetingIcon}
-                  style={[styles.selectedPointMarker, meetingMarkerPulseStyle]}
+                  style={[styles.selectedPointMarker, currentMarkerPulseStyle]}
                   resizeMode="contain"
                 />
               </View>
-              <View style={styles.selectedPointMarkerLabelPill}>
-                <Text style={styles.selectedPointMarkerLabelText}>
-                  {selectedPointMarkerLabel}
-                </Text>
-              </View>
-            </View>
-          </Marker>
+            </Marker>
+          ) : (
+            <Marker
+              coordinate={point}
+              anchor={{ x: 0.5, y: 0.96 }}
+              image={meetupCarMarkerIcon}
+              zIndex={30}
+            />
+          )
         ) : null}
 
         {currentLocation ? (
@@ -511,7 +498,15 @@ export default function MapPickScreen() {
         onPress={focusMeetingPoint}
         style={[styles.iconButton, styles.meetingButton, !point && styles.iconButtonDisabled]}
       >
-        <Image source={meetingIcon} style={[styles.iconImage, !point && styles.iconImageDisabled]} resizeMode="contain" />
+        {isEndPoint ? (
+          <Image source={meetingIcon} style={[styles.iconImage, !point && styles.iconImageDisabled]} resizeMode="contain" />
+        ) : (
+          <Image
+            source={meetupCarMarkerIcon}
+            style={[styles.iconImage, !point && styles.iconImageDisabled]}
+            resizeMode="contain"
+          />
+        )}
       </TouchableOpacity>
 
       <View style={styles.meetingHintWrap}>
@@ -714,37 +709,10 @@ const styles = StyleSheet.create({
     height: 46,
   },
   selectedPointMarkerWrap: {
-    width: 96,
-    height: 92,
-    paddingTop: 6,
-    paddingBottom: 4,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    overflow: "visible",
-  },
-  selectedPointMarkerIconWrap: {
-    width: 64,
-    height: 64,
+    width: 46,
+    height: 46,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "visible",
-  },
-  selectedPointMarkerLabelPill: {
-    marginTop: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: AppTheme.radius.pill,
-    backgroundColor: "rgba(255,253,248,0.96)",
-    borderWidth: 1,
-    borderColor: "rgba(222,212,197,0.92)",
-    ...AppTheme.shadow.card,
-  },
-  selectedPointMarkerLabelText: {
-    color: AppTheme.colors.accentDeep,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "700",
-    fontFamily: AppFontFamily,
   },
   bottomWrap: {
     position: "absolute",

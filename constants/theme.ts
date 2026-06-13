@@ -5,7 +5,7 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
+const tintColorLight = '#4CAF8C';
 const tintColorDark = '#fff';
 
 export const AppFontFamily = Platform.select({
@@ -15,7 +15,7 @@ export const AppFontFamily = Platform.select({
   web: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 });
 
-export const AppTheme = {
+export const LegacyAppTheme = {
   colors: {
     canvas: '#f4efe6',
     canvasMuted: '#ede5d8',
@@ -34,7 +34,7 @@ export const AppTheme = {
     white: '#ffffff',
     badge: '#d85d48',
     shadow: '#18201c',
-    tabBar: '#fbf7ef',
+    tabBar: '#eef8f1',
   },
   radius: {
     sm: 12,
@@ -56,6 +56,51 @@ export const AppTheme = {
       shadowOffset: { width: 0, height: 12 },
       shadowRadius: 28,
       elevation: 8,
+    },
+  },
+} as const;
+
+export const AppTheme = {
+  colors: {
+    canvas: '#F7FAF8',
+    canvasMuted: '#EEF6F1',
+    card: '#FFFFFF',
+    cardSoft: '#F2FAF5',
+    text: '#294D56',
+    textMuted: '#7A8B8D',
+    accent: '#4CAF8C',
+    accentDeep: '#24786B',
+    accentSoft: '#D9F0E6',
+    accentGlow: '#EEF9F3',
+    gold: '#E8B84B',
+    warning: '#CF8A35',
+    danger: '#D85D48',
+    border: '#DFEAE5',
+    white: '#FFFFFF',
+    badge: '#F06A55',
+    shadow: '#2D4C45',
+    tabBar: '#FFFFFF',
+  },
+  radius: {
+    sm: 12,
+    md: 18,
+    lg: 24,
+    pill: 999,
+  },
+  shadow: {
+    card: {
+      shadowColor: '#2D4C45',
+      shadowOpacity: 0.08,
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 18,
+      elevation: 4,
+    },
+    floating: {
+      shadowColor: '#2D4C45',
+      shadowOpacity: 0.12,
+      shadowOffset: { width: 0, height: 12 },
+      shadowRadius: 26,
+      elevation: 7,
     },
   },
 } as const;

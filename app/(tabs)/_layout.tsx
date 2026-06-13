@@ -182,6 +182,8 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 10,
     borderTopWidth: 0,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
     borderRadius: 28,
     backgroundColor: AppTheme.colors.tabBar,
     ...AppTheme.shadow.floating,
@@ -199,6 +201,8 @@ const styles = StyleSheet.create({
   },
   tabIconWrapFocused: {
     backgroundColor: AppTheme.colors.accentSoft,
+    borderWidth: 1,
+    borderColor: "rgba(76, 175, 140, 0.28)",
   },
   tabIcon: {
     width: 22,

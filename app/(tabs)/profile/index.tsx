@@ -302,9 +302,15 @@ export default function ProfileScreen() {
   };
 
   const logout = async () => {
-    await removePushTokenFromBackend();
-    await stopRideMeetupTracking();
-    await clearRideReminderNotifications();
+    await removePushTokenFromBackend().catch((error) => {
+      console.log("removePushTokenFromBackend failed during logout", error);
+    });
+    await stopRideMeetupTracking().catch((error) => {
+      console.log("stopRideMeetupTracking failed during logout", error);
+    });
+    await clearRideReminderNotifications().catch((error) => {
+      console.log("clearRideReminderNotifications failed during logout", error);
+    });
     await clearAuth();
     router.replace("/(auth)/login");
   };

@@ -21,9 +21,19 @@ import {
   syncRideReminderNotificationsFromServer,
 } from "@/services/rideReminders";
 import * as Notifications from "expo-notifications";
+import * as NavigationBar from "expo-navigation-bar";
 import { Stack, router, usePathname } from "expo-router";
 import React, { useCallback, useEffect } from "react";
-import { Alert, AppState, Text, TextInput, type StyleProp, type TextStyle } from "react-native";
+import {
+  Alert,
+  AppState,
+  Platform,
+  StatusBar,
+  Text,
+  TextInput,
+  type StyleProp,
+  type TextStyle,
+} from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 type StyledComponentWithDefaults<T> = T & {
@@ -35,6 +45,7 @@ type StyledComponentWithDefaults<T> = T & {
 const textComponent = Text as StyledComponentWithDefaults<typeof Text>;
 const textInputComponent = TextInput as StyledComponentWithDefaults<typeof TextInput>;
 const AUTO_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const SYSTEM_BAR_BACKGROUND = AppTheme.colors.canvas;
 
 let lastAutoUpdateCheckAt = 0;
 let autoUpdateCheckInFlight = false;
@@ -56,6 +67,13 @@ export default function RootLayout() {
     pathname === "/onboarding" ||
     pathname === "/login" ||
     pathname === "/register";
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    NavigationBar.setButtonStyleAsync("dark").catch(() => null);
+    NavigationBar.setBackgroundColorAsync(SYSTEM_BAR_BACKGROUND).catch(() => null);
+  }, []);
 
   const promptToApplyDownloadedUpdate = useCallback((message: string) => {
     autoUpdatePromptVisible = true;
@@ -314,9 +332,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <SafeAreaView
-        style={{ flex: 1, backgroundColor: AppTheme.colors.canvas }}
+        style={{ flex: 1, backgroundColor: SYSTEM_BAR_BACKGROUND }}
         edges={["top", "bottom"]}
       >
+        <StatusBar backgroundColor={SYSTEM_BAR_BACKGROUND} barStyle="dark-content" />
         <Stack
           screenOptions={{
             headerShown: true,

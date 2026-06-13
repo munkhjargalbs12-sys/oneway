@@ -17,6 +17,7 @@ import {
 import { formatRideDate } from "@/services/rideDate";
 import { getRideLocationDisplay } from "@/services/rideLocations";
 import { syncRideReminderNotificationsFromServer } from "@/services/rideReminders";
+import { haversineMeters } from "@/services/rideSearch";
 import { getRideStartDate } from "@/services/rideTiming";
 import polyline from "@mapbox/polyline";
 import { router, useLocalSearchParams } from "expo-router";
@@ -58,11 +59,16 @@ const seatImages: Record<number, any> = {
   4: require("../../assets/cars/4seat.png"),
 };
 
+const meetupCarMarkerIcon = require("../../assets/icons/meetup-car-marker.png");
+
 const MEETUP_TRACKING_LEAD_MINUTES = 30;
 const MEETUP_TRACKING_GRACE_MINUTES = 45;
 const MEETUP_CHECK_IN_RETRY_MS = 30 * 1000;
 const MEETUP_CHECK_IN_RETRY_DELAY_MS = 5 * 1000;
 const DEFAULT_MEETUP_START_RADIUS_METERS = 50;
+const DEFAULT_RIDE_COMPLETE_RADIUS_METERS = 200;
+const RIDE_COMPLETE_SUCCESS_MESSAGE =
+  "Таны үүсгэсэн чиглэл амжилттай дууслаа. OneWay нэгдсэнд баярлалаа. Conguralation! Win Win Win.";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -267,9 +273,13 @@ export default function RideDetail() {
   const [meetupCheckInStatus, setMeetupCheckInStatus] = useState("");
   const [meetupPin, setMeetupPin] = useState("");
   const [meetupPinLoading, setMeetupPinLoading] = useState(false);
+  const [rideCompleteLoading, setRideCompleteLoading] = useState(false);
 
   const mapRef = useRef<AppMapRef | null>(null);
   const meetupLocationAlertShownRef = useRef(false);
+  const rideCompleteSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const rideCompletePendingRef = useRef(false);
+  const rideCompleteLocationAlertShownRef = useRef(false);
 
   const decodePolyline = (encoded: string) =>
     polyline.decode(encoded).map(([lat, lng]) => ({
@@ -444,6 +454,136 @@ export default function RideDetail() {
     ]);
   }, []);
 
+  const stopRideCompleteWatcher = useCallback(() => {
+    if (rideCompleteSubscriptionRef.current) {
+      rideCompleteSubscriptionRef.current.remove();
+      rideCompleteSubscriptionRef.current = null;
+    }
+  }, []);
+
+  const getDistanceToRideDestination = useCallback(
+    (coords: Pick<Location.LocationObjectCoords, "latitude" | "longitude">) =>
+      haversineMeters(
+        { lat: coords.latitude, lng: coords.longitude },
+        {
+          lat: Number(ride?.end_lat),
+          lng: Number(ride?.end_lng),
+        }
+      ),
+    [ride?.end_lat, ride?.end_lng]
+  );
+
+  const getRideCompletionCoords = useCallback(async () => {
+    let foreground = await Location.getForegroundPermissionsAsync();
+    if (!foreground.granted) {
+      foreground = await Location.requestForegroundPermissionsAsync();
+    }
+
+    if (!foreground.granted) {
+      rideCompleteLocationAlertShownRef.current = true;
+      openMeetupLocationSettings(
+        "Аяллыг очих цэг дээр автоматаар дуусгахын тулд app-д байршлын зөвшөөрөл өгнө үү."
+      );
+      return null;
+    }
+
+    let servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+    if (!servicesEnabled && Platform.OS === "android") {
+      await Location.enableNetworkProviderAsync().catch(() => null);
+      servicesEnabled = await Location.hasServicesEnabledAsync().catch(() => false);
+    }
+
+    if (!servicesEnabled) {
+      rideCompleteLocationAlertShownRef.current = true;
+      openMeetupLocationSettings(
+        "Аяллыг очих цэг дээр автоматаар дуусгахын тулд утасныхаа Location service-ийг асаана уу."
+      );
+      return null;
+    }
+
+    rideCompleteLocationAlertShownRef.current = false;
+    const currentLocation = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+
+    return currentLocation.coords;
+  }, [openMeetupLocationSettings]);
+
+  const completeRideFromCoords = useCallback(
+    async (
+      coords?: Pick<Location.LocationObjectCoords, "latitude" | "longitude" | "accuracy"> | null,
+      options?: { autoTriggered?: boolean }
+    ) => {
+      if (!ride || !user || rideCompletePendingRef.current) {
+        return false;
+      }
+
+      rideCompletePendingRef.current = true;
+      setRideCompleteLoading(true);
+
+      try {
+        const resolvedCoords = coords ?? (await getRideCompletionCoords());
+        if (!resolvedCoords) {
+          return false;
+        }
+
+        const distanceToEndMeters = getDistanceToRideDestination(resolvedCoords);
+        if (
+          Number.isFinite(distanceToEndMeters) &&
+          distanceToEndMeters > DEFAULT_RIDE_COMPLETE_RADIUS_METERS
+        ) {
+          if (!options?.autoTriggered) {
+            Alert.alert(
+              "Очих цэгт хүрээгүй байна",
+              `Очих цэгээс ${DEFAULT_RIDE_COMPLETE_RADIUS_METERS}м дотор орж байж аяллаа дуусгана уу. Одоо ойролцоогоор ${Math.round(distanceToEndMeters)}м зайтай байна.`
+            );
+          }
+          return false;
+        }
+
+        await apiFetch(`/rides/${ride.id}/complete`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            latitude: resolvedCoords.latitude,
+            longitude: resolvedCoords.longitude,
+            accuracy: resolvedCoords.accuracy ?? null,
+          }),
+        });
+
+        stopRideCompleteWatcher();
+        setRide((current: any) =>
+          current
+            ? {
+                ...current,
+                status: "completed",
+              }
+            : current
+        );
+        void playActionSuccessSound();
+        void syncRideReminderNotificationsFromServer();
+        Alert.alert("Амжилттай дууслаа", RIDE_COMPLETE_SUCCESS_MESSAGE, [
+          {
+            text: "OK",
+            onPress: () => {
+              router.back();
+            },
+          },
+        ]);
+        return true;
+      } catch (err: any) {
+        const message = String(err?.message || "").trim();
+        if (!options?.autoTriggered || !message) {
+          Alert.alert("Алдаа", message || "Аяллыг дуусгаж чадсангүй.");
+        }
+        return false;
+      } finally {
+        rideCompletePendingRef.current = false;
+        setRideCompleteLoading(false);
+      }
+    },
+    [getDistanceToRideDestination, getRideCompletionCoords, ride, stopRideCompleteWatcher, user]
+  );
+
   const loadMeetupLocationState = useCallback(async () => {
     if (!shouldPromptForMeetupLocation(ride, user, bookingStatus)) {
       setMeetupLocationReady(null);
@@ -493,6 +633,82 @@ export default function RideDetail() {
       subscription.remove();
     };
   }, [bookingStatus, loadMeetupLocationState, ride, user]);
+
+  useEffect(() => {
+    const isDriverStartedRide =
+      Boolean(user) &&
+      Boolean(ride) &&
+      Number(user?.id) === Number(ride?.user_id) &&
+      role !== "rider" &&
+      String(ride?.status || "").toLowerCase() === "started";
+    const hasDestination =
+      Number.isFinite(Number(ride?.end_lat)) && Number.isFinite(Number(ride?.end_lng));
+
+    if (!isDriverStartedRide || !hasDestination) {
+      stopRideCompleteWatcher();
+      rideCompleteLocationAlertShownRef.current = false;
+      return;
+    }
+
+    let active = true;
+
+    const startWatcher = async () => {
+      const initialCoords = await getRideCompletionCoords();
+      if (!active || !initialCoords) {
+        return;
+      }
+
+      const initialDistance = getDistanceToRideDestination(initialCoords);
+      if (
+        Number.isFinite(initialDistance) &&
+        initialDistance <= DEFAULT_RIDE_COMPLETE_RADIUS_METERS
+      ) {
+        await completeRideFromCoords(initialCoords, { autoTriggered: true });
+        return;
+      }
+
+      stopRideCompleteWatcher();
+      const subscription = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: 25,
+          timeInterval: 12000,
+        },
+        (position) => {
+          const distanceToEndMeters = getDistanceToRideDestination(position.coords);
+          if (
+            Number.isFinite(distanceToEndMeters) &&
+            distanceToEndMeters <= DEFAULT_RIDE_COMPLETE_RADIUS_METERS &&
+            !rideCompletePendingRef.current
+          ) {
+            void completeRideFromCoords(position.coords, { autoTriggered: true });
+          }
+        }
+      );
+
+      if (!active) {
+        subscription.remove();
+        return;
+      }
+
+      rideCompleteSubscriptionRef.current = subscription;
+    };
+
+    void startWatcher();
+
+    return () => {
+      active = false;
+      stopRideCompleteWatcher();
+    };
+  }, [
+    completeRideFromCoords,
+    getDistanceToRideDestination,
+    getRideCompletionCoords,
+    ride,
+    role,
+    stopRideCompleteWatcher,
+    user,
+  ]);
 
   const handleMeetupCheckIn = useCallback(async () => {
     const rideId = ride?.id ?? (id ? Number(id) : null);
@@ -778,6 +994,11 @@ export default function RideDetail() {
   const updateStatus = async (action: "start" | "complete" | "cancel") => {
     if (!ride || !user) return;
 
+    if (action === "complete") {
+      await completeRideFromCoords();
+      return;
+    }
+
     try {
       await apiFetch(`/rides/${ride.id}/${action}`, { method: "PATCH" });
       void playActionSuccessSound();
@@ -895,6 +1116,7 @@ export default function RideDetail() {
   const ownerName = getRideOwnerName(ride);
   const startDisplay = getRideLocationDisplay(ride, "start", "Эхлэх газар тодорхойгүй");
   const endDisplay = getRideLocationDisplay(ride, "end", "Очих газар тодорхойгүй");
+  const stopoverNote = String(ride?.stopover_note || "").trim();
   const seatImageIndex = Math.min(Math.max(seatsLeft, 1), 4);
   const normalizedBookingStatus = String(bookingStatus || "").toLowerCase();
   const hasActiveBooking = ["pending", "approved"].includes(normalizedBookingStatus);
@@ -1007,18 +1229,10 @@ export default function RideDetail() {
           >
             <Marker
               coordinate={{ latitude: ride.start_lat, longitude: ride.start_lng }}
-              anchor={{ x: 0.5, y: 0.78 }}
-              tracksViewChanges
-            >
-              <View style={styles.routeMarkerWrap} collapsable={false}>
-                <View style={[styles.routeMarkerPin, styles.routeMarkerStartPin]}>
-                  <Text style={styles.routeMarkerPinText}>Э</Text>
-                </View>
-                <View style={[styles.routeMarkerLabel, styles.routeMarkerStartLabel]}>
-                  <Text style={styles.routeMarkerLabelText}>Эхлэх</Text>
-                </View>
-              </View>
-            </Marker>
+              anchor={{ x: 0.5, y: 0.96 }}
+              image={meetupCarMarkerIcon}
+              zIndex={30}
+            />
             <Marker
               coordinate={{ latitude: ride.end_lat, longitude: ride.end_lng }}
               anchor={{ x: 0.5, y: 0.78 }}
@@ -1087,6 +1301,13 @@ export default function RideDetail() {
           <InfoPill label="Сул суудал" value={String(seatsLeft)} />
           <InfoPill label="1 суудлын үнэ" value={`${ride.price ?? 0}₮`} />
         </View>
+
+        {stopoverNote ? (
+          <View style={styles.stopoverCard}>
+            <Text style={styles.stopoverTitle}>Түр зогсох газар</Text>
+            <Text style={styles.stopoverText}>{stopoverNote}</Text>
+          </View>
+        ) : null}
 
         {days.length > 0 && (
           <View style={styles.metaCard}>
@@ -1455,7 +1676,8 @@ export default function RideDetail() {
         {showDriverActions && ride.status === "started" && (
           <TouchableOpacity
             onPress={() => updateStatus("complete")}
-            style={styles.primaryBtn}
+            style={[styles.primaryBtn, rideCompleteLoading && styles.buttonDisabled]}
+            disabled={rideCompleteLoading}
           >
             <Text style={styles.btnText}>Ride дуусгах</Text>
           </TouchableOpacity>
@@ -1717,6 +1939,25 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   metaText: {
+    color: AppTheme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  stopoverCard: {
+    backgroundColor: AppTheme.colors.cardSoft,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  stopoverTitle: {
+    color: AppTheme.colors.text,
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 5,
+  },
+  stopoverText: {
     color: AppTheme.colors.textMuted,
     fontSize: 13,
     lineHeight: 19,
