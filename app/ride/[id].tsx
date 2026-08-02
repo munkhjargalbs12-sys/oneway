@@ -74,6 +74,10 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function requiresEmailVerification(user: any) {
+  return !user?.email || !user?.email_verified;
+}
+
 function getAvatarSource(avatarId?: string) {
   if (!avatarId) return avatars.sister;
   return avatars[avatarId] || avatars.sister;
@@ -924,6 +928,20 @@ export default function RideDetail() {
       const rideId = ride?.id ?? (id ? Number(id) : null);
       if (!rideId) {
         Alert.alert("Алдаа", "Ride мэдээлэл дутуу байна. Дахин оролдоно уу.");
+        return;
+      }
+
+      const me = await apiFetch("/users/me");
+      setUser(me);
+      if (requiresEmailVerification(me)) {
+        Alert.alert(
+          "И-мэйл баталгаажуулна уу",
+          "Суудал захиалахын өмнө профайл дээрээс и-мэйл хаягаа баталгаажуулна уу.",
+          [
+            { text: "Болих", style: "cancel" },
+            { text: "Профайл руу", onPress: () => router.push("/(tabs)/profile") },
+          ]
+        );
         return;
       }
 

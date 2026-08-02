@@ -18,7 +18,7 @@ import {
 } from "react-native";
 
 export default function ForgotPasswordScreen() {
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [maskedEmail, setMaskedEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -28,16 +28,16 @@ export default function ForgotPasswordScreen() {
   const [codeSent, setCodeSent] = useState(false);
   const [loading, setLoading] = useState<"send" | "reset" | null>(null);
 
-  const normalizedPhone = phone.trim();
+  const normalizedEmail = email.trim().toLowerCase();
 
   const handleSend = async () => {
-    if (!/^[0-9]{8}$/.test(normalizedPhone)) {
-      Alert.alert("Мэдэгдэл", "Бүртгэлтэй 8 оронтой утасны дугаараа оруулна уу.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      Alert.alert("Мэдэгдэл", "Бүртгэлтэй и-мэйл хаягаа зөв оруулна уу.");
       return;
     }
 
     setLoading("send");
-    const response = await requestPasswordReset(normalizedPhone);
+    const response = await requestPasswordReset(normalizedEmail);
     setLoading(null);
 
     if (response.message) {
@@ -48,16 +48,21 @@ export default function ForgotPasswordScreen() {
     setMaskedEmail(response.masked_email || "");
     setCodeSent(true);
     Alert.alert(
-      "Код илгээгдлээ",
+      "Хүсэлт хүлээн авлаа",
       response.masked_email
-        ? `${response.masked_email} хаяг руу сэргээх код илгээгдлээ.`
-        : "Хэрэв энэ дугаар бүртгэлтэй бол баталгаажсан имэйл рүү сэргээх код илгээгдсэн."
+        ? `${response.masked_email} хаяг бүртгэлтэй бөгөөд баталгаажсан бол сэргээх код илгээгдсэн.`
+        : "Хэрэв энэ и-мэйл бүртгэлтэй бөгөөд баталгаажсан бол сэргээх код илгээгдсэн."
     );
   };
 
   const handleReset = async () => {
-    if (!/^[0-9]{8}$/.test(normalizedPhone) || !code.trim() || !password || !confirmPassword) {
-      Alert.alert("Мэдэгдэл", "Утасны дугаар, код болон шинэ нууц үгээ бүрэн оруулна уу.");
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+      !code.trim() ||
+      !password ||
+      !confirmPassword
+    ) {
+      Alert.alert("Мэдэгдэл", "И-мэйл, код болон шинэ нууц үгээ бүрэн оруулна уу.");
       return;
     }
 
@@ -72,7 +77,12 @@ export default function ForgotPasswordScreen() {
     }
 
     setLoading("reset");
-    const response = await confirmPasswordReset(normalizedPhone, code.trim(), password, confirmPassword);
+    const response = await confirmPasswordReset(
+      normalizedEmail,
+      code.trim(),
+      password,
+      confirmPassword
+    );
     setLoading(null);
 
     if (response.message) {
@@ -100,26 +110,29 @@ export default function ForgotPasswordScreen() {
           <Text style={styles.heroEyebrow}>Recovery</Text>
           <Text style={styles.heroTitle}>Нууц үгээ сэргээх</Text>
           <Text style={styles.heroBody}>
-            Утасны дугаараа оруулаад аккаунтын баталгаажсан имэйл рүү сэргээх код авна.
+            Бүртгэл дээрээ баталгаажуулсан и-мэйл хаягаар сэргээх код авна.
           </Text>
         </LinearGradient>
 
         <View style={styles.formCard}>
-          <Text style={styles.sectionTitle}>Утасны дугаар</Text>
+          <Text style={styles.sectionTitle}>И-мэйл хаяг</Text>
           <Text style={styles.sectionBody}>
-            Кодыг таны бүртгэл дээр баталгаажсан имэйл хаяг руу илгээнэ.
+            Одоогоор нууц үг сэргээхийг зөвхөн баталгаажсан и-мэйлээр илгээнэ.
           </Text>
 
           <TextInput
-            placeholder="Утасны дугаар"
-            keyboardType="phone-pad"
-            value={phone}
+            placeholder="И-мэйл хаяг"
+            keyboardType="email-address"
+            value={email}
             onChangeText={(value) => {
-              setPhone(value.replace(/[^0-9]/g, "").slice(0, 8));
+              setEmail(value.trim());
               setMaskedEmail("");
               setCodeSent(false);
+              setCode("");
             }}
-            maxLength={8}
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
             placeholderTextColor={AppTheme.colors.textMuted}
             style={styles.input}
           />
@@ -139,7 +152,11 @@ export default function ForgotPasswordScreen() {
 
           {codeSent && (
             <View style={styles.resetBlock}>
-              {!!maskedEmail && <Text style={styles.sentHint}>{maskedEmail} рүү код илгээсэн.</Text>}
+              {!!maskedEmail && (
+                <Text style={styles.sentHint}>
+                  {maskedEmail} хаягаар код ирсэн бол доор оруулна уу.
+                </Text>
+              )}
 
               <TextInput
                 placeholder="6 оронтой код"

@@ -94,6 +94,10 @@ function getRideTimeValidationMessage(rideDate: string, startTime: string, now =
   return null;
 }
 
+function requiresEmailVerification(user: any) {
+  return !user?.email || !user?.email_verified;
+}
+
 function isCoordinateLikeLabel(value: unknown) {
   return /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(String(value || "").trim());
 }
@@ -245,6 +249,19 @@ export default function RideCreationScreen() {
       if (!vehicleId) {
         Alert.alert("Алдаа", "Машин бүртгэгдээгүй байна. Машин бүртгэнэ үү.");
         router.push("/vehicle/add");
+        return;
+      }
+
+      const me = await apiFetch("/users/me");
+      if (requiresEmailVerification(me)) {
+        Alert.alert(
+          "И-мэйл баталгаажуулна уу",
+          "Чиглэл үүсгэхийн өмнө профайл дээрээс и-мэйл хаягаа баталгаажуулна уу.",
+          [
+            { text: "Болих", style: "cancel" },
+            { text: "Профайл руу", onPress: () => router.push("/(tabs)/profile") },
+          ]
+        );
         return;
       }
 

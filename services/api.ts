@@ -41,6 +41,8 @@ export type AuthResponse = {
   token?: string;
   user?: User;
   message?: string;
+  code_sent?: boolean;
+  expires_in_seconds?: number;
   masked_email?: string;
 };
 
@@ -100,14 +102,14 @@ export async function login(phone: string, password: string): Promise<AuthRespon
   }
 }
 
-export async function requestPasswordReset(phone: string): Promise<AuthResponse> {
+export async function requestPasswordReset(email: string): Promise<AuthResponse> {
   const url = `${API_URL}/auth/password/reset/request`;
 
   try {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({ email }),
     });
 
     return handleResponse(res);
@@ -117,7 +119,7 @@ export async function requestPasswordReset(phone: string): Promise<AuthResponse>
 }
 
 export async function confirmPasswordReset(
-  phone: string,
+  email: string,
   code: string,
   password: string,
   confirmPassword: string
@@ -128,7 +130,7 @@ export async function confirmPasswordReset(
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, code, password, confirmPassword }),
+      body: JSON.stringify({ email, code, password, confirmPassword }),
     });
 
     return handleResponse(res);
